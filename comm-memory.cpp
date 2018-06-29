@@ -14,6 +14,7 @@ WatchState * __commMemory = dummyCommMemory;
 
 void initCommMemory()
 {
+    return;
     int fd = open("/tmp/alloc-comm", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
     if (fd == -1)
         abort();

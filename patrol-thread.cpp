@@ -36,6 +36,9 @@ uint32_t PatrolThread::LEAK_TIME()
 void PatrolThread::monitorMain() {
     LibraryContext ctx;
 
+    sleep(3);
+    *__commMemory = WatchState::Watching;
+
     ofstream report("/tmp/alloc-report");
 //    auto& report = cerr;
     report << "Patrol Thread Hello\n";

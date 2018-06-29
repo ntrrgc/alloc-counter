@@ -3,6 +3,7 @@
 #include <mutex>
 #include <memory>
 #include <time.h>
+#include <cassert>
 #include "callstack-fingerprint.h"
 using namespace std;
 
@@ -20,11 +21,23 @@ public:
 
     void insertNewEntry(void* memory, uint32_t size, CallstackFingerprint callstackFingerprint) {
         lock_guard<mutex> lock(m_mutex);
+        size_t n = m_allocsByAddress.size();
+        assert(m_allocsByAddress.find(memory) == m_allocsByAddress.end());
         AllocationInfo* alloc = &m_allocsByAddress[memory];
+        assert(m_allocsByAddress.size() == n + 1);
         alloc->memory = memory;
         alloc->size = size;
         alloc->callstackFingerprint = callstackFingerprint;
         alloc->time = time(nullptr);
+    }
+
+    AllocationInfo* findEntry(void* memory) {
+        lock_guard<mutex> lock(m_mutex);
+        auto iter = m_allocsByAddress.find(memory);
+        if (iter != m_allocsByAddress.end())
+            return &iter->second;
+        else
+            return nullptr;
     }
 
     void deleteEntry(void* memory) {
@@ -44,6 +57,7 @@ public:
         alloc.size = newSize;
 
         m_allocsByAddress.erase(oldMemory);
+        assert(m_allocsByAddress.find(newMemory) == m_allocsByAddress.end());
         m_allocsByAddress[newMemory] = alloc;
     }
 
