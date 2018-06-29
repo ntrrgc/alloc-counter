@@ -1,5 +1,7 @@
 #pragma once
 #include <atomic>
+#include <mutex>
+using namespace std;
 
 class AllocationStats {
 public:
@@ -23,6 +25,7 @@ public:
 
 private:
     void enable();
+    mutex m_mutex;
 
     static AllocationStats s_instance;
 };

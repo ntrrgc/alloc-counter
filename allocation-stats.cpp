@@ -11,7 +11,9 @@ double AllocationStats::getTime() {
 }
 
 void AllocationStats::enable() {
-    assert(!enabled);
+    lock_guard<mutex> lock(m_mutex);
+    if (enabled)
+        return; // another thread already did before us
     enabled = true;
     timeWatchEnabled = getTime();
     allocationCount.store(0);
