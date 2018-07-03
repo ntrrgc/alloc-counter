@@ -8,7 +8,9 @@ using namespace std;
 class StackTrace {
 public:
     // Creates an stacktrace with the current stack. The topmost `numSkipCalls` are omitted (so that this
-    StackTrace(int numSkipCalls);
+    StackTrace(int numSkipCalls = 0) noexcept;
+
+    bool operator==(const StackTrace& other) const noexcept;
 
 private:
     friend ostream& operator<<(ostream& os, const StackTrace& st);
@@ -23,8 +25,7 @@ ostream& operator<<(ostream& os, const StackTrace& st);
 namespace std {
     template <>
     struct hash<StackTrace> {
-        size_t operator()(const StackTrace& st) noexcept {
-            cerr << "hash function working, remove this comment!" << endl;
+        size_t operator()(const StackTrace& st) const noexcept {
             return st.m_hash;
         }
     };

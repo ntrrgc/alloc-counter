@@ -31,11 +31,16 @@ project(alloc-counter)
 #target_link_libraries(alloc-counter dl pthread)
 #target_compile_definitions(alloc-counter PUBLIC _GNU_SOURCE)
 
+add_library(dummy-lib SHARED
+    "dummy-lib.h"
+    "dummy-lib.cpp"
+    )
+
 add_executable(test-stack-traces
     "stack-trace.h"
     "stack-trace.cpp"
     "test-stack-traces.cpp"
     )
 target_compile_options(test-stack-traces PUBLIC -Wall -std=c++14)
-target_link_libraries(test-stack-traces dl pthread)
+target_link_libraries(test-stack-traces dl pthread unwind dummy-lib)
 target_compile_definitions(test-stack-traces PUBLIC _GNU_SOURCE)
