@@ -19,6 +19,12 @@ add_library(alloc-counter SHARED
     "allocation-stats.cpp"
     "callstack-fingerprint.h"
     "callstack-fingerprint.cpp"
+    "environment.h"
+    "environment.cpp"
+    "memory-protector.h"
+    "memory-protector.cpp"
+    "stack-trace.h"
+    "stack-trace.cpp"
     )
 
 target_compile_options(alloc-counter PUBLIC -Wall -std=c++14)

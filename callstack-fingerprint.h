@@ -13,3 +13,9 @@ inline CallstackFingerprint computeCallstackFingerprint(void* stackPointer, void
         ^ pointerToInt(returnAddress)
         ^ (allocationSize * 786433);
 }
+
+
+class SuspiciousFastFingerprints {
+    set<CallstackFingerprint> m_suspiciousFastFingerprints;
+
+};

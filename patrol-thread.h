@@ -7,7 +7,6 @@ class PatrolThread {
 public:
     static void spawn();
     static PatrolThread* instance() { return s_instance; }
-    static uint32_t LEAK_TIME();
 
     void tearDown();
 
@@ -26,4 +25,5 @@ private:
     bool m_should_tear_down = false;
 
     void monitorMain();
+    void migrateAllocationsToOldSuspicious();
 };

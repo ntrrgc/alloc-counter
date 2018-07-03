@@ -2,17 +2,40 @@
 #include <unordered_map>
 #include <mutex>
 #include <memory>
+#include <set>
+#include <algorithm>
 #include <time.h>
 #include <cassert>
 #include "callstack-fingerprint.h"
+#include "environment.h"
 using namespace std;
+
+enum class AllocationState {
+    Young = 0,
+    OldSuspicious = 1,
+    OldButUsed = 2
+};
 
 struct AllocationInfo {
     void* memory;
     uint32_t size;
     CallstackFingerprint callstackFingerprint;
-    uint32_t time;
+    // The full traceback is only collected if the fingerprint was in the wanted list when the allocation was made.
+    unique_ptr<FullTraceback> fullTraceback;
+    uint32_t allocationTime;
+
+    AllocationState state = AllocationState::Young;
+
+    // This is the time when, if reached, the allocation moves to a more suspicious state:
+    // If it is in Young, it will become OldSuspicious.
+    // If it is OldSuspicious, it will be declared a leak.
+    // If it is OldUsed, it will become OldSuspicious again.
+    uint32_t deadline;
+
+    AllocationInfo() {}
 };
+
+
 
 class AllocationTable {
 public:
@@ -28,7 +51,9 @@ public:
         alloc->memory = memory;
         alloc->size = size;
         alloc->callstackFingerprint = callstackFingerprint;
-        alloc->time = time(nullptr);
+        alloc->allocationTime = time(nullptr);
+        alloc->state = AllocationState::Young;
+        alloc->timeout = alloc->allocationTime + environment.timeForYoungToBecomeSuspicious;
     }
 
     AllocationInfo* findEntry(void* memory) {
@@ -52,13 +77,14 @@ public:
             // This allocation was not recorded, nothing to bookkeep here.
             return;
 
-        AllocationInfo alloc = m_allocsByAddress[oldMemory];
+        AllocationInfo& alloc = m_allocsByAddress[oldMemory];
         alloc.memory = newMemory;
         alloc.size = newSize;
 
-        m_allocsByAddress.erase(oldMemory);
         assert(m_allocsByAddress.find(newMemory) == m_allocsByAddress.end());
-        m_allocsByAddress[newMemory] = alloc;
+        m_allocsByAddress[newMemory] = std::move(alloc);
+
+        m_allocsByAddress.erase(oldMemory);
     }
 
     class LeakSearch {
@@ -87,7 +113,7 @@ public:
             first_iteration = false;
             for (; m_iter != m_allocsByAddress.end(); ++m_iter) {
                 AllocationInfo* alloc = &(*m_iter).second;
-                if (alloc->time < m_cutOffTime) {
+                if (alloc->allocationTime < m_cutOffTime) {
                     free(alloc->memory);
                     return alloc;
                 }
@@ -100,6 +126,13 @@ public:
     // guaranteed copy ellision requires gcc 7 (C++17), next best thing is unique_ptr
     unique_ptr<LeakSearch> findLeakedEntries(uint32_t allocationsBecomeLeaksAfterSeconds) {
         return unique_ptr<LeakSearch>(new LeakSearch(m_allocsByAddress, m_mutex, time(0) - allocationsBecomeLeaksAfterSeconds));
+    }
+
+    // To be called by Patrol Thread only
+    void updateAllocationStates() {
+        for (auto it = m_allocsByAddress.begin(); it != m_allocsByAddress.end(); ++it) {
+
+        }
     }
 
 
