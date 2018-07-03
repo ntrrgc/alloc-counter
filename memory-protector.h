@@ -38,6 +38,7 @@ public:
     }
 };
 
+#if FALSE //TODO
 class MemoryProtector {
 public:
     static void initialize() {
@@ -166,3 +167,4 @@ public:
         instance().segfaultHandler(siginfo->si_addr);
     }
 };
+#endif

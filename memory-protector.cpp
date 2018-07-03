@@ -1,3 +1,3 @@
 #include "memory-protector.h"
 
-MemoryProtector* MemoryProtector::s_instance = nullptr;
+//MemoryProtector* MemoryProtector::s_instance = nullptr;

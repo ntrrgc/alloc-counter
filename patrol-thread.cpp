@@ -24,7 +24,7 @@ void PatrolThread::monitorMain() {
 //    ofstream report("/tmp/alloc-report");
     auto& report = cerr;
     report << "Patrol Thread Hello\n";
-    report << "ALLOC_TIME_SUSPICIOUS = " << environment.timeForYoungToBecomeSuspicious << " seconds\n";
+    report << "ALLOC_TIME_SUSPICIOUS = " << environment.timeForAllocationToBecomeSuspicious << " seconds\n";
 
     while (true) {
         sleep(5);
@@ -40,8 +40,8 @@ void PatrolThread::monitorMain() {
             report << "Reallocs per second: " << AllocationStats::instance().reallocCount / t << endl;
 
             {
-                auto leakIterator = AllocationTable::instance().findLeakedEntries(environment.timeForYoungToBecomeSuspicious);
-                const AllocationInfo* alloc;
+                auto leakIterator = AllocationTable::instance().findLeakedEntries(environment.timeForAllocationToBecomeSuspicious);
+                const Allocation* alloc;
                 while ((alloc = leakIterator->next())) {
                     report << alloc->memory << ": lost " << alloc->size << " bytes at " << alloc->callstackFingerprint << endl;
                 }
