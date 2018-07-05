@@ -30,7 +30,7 @@ add_library(alloc-counter SHARED
     )
 
 target_compile_options(alloc-counter PUBLIC -Wall -std=c++14)
-target_link_libraries(alloc-counter dl pthread)
+target_link_libraries(alloc-counter dl pthread unwind)
 target_compile_definitions(alloc-counter PUBLIC _GNU_SOURCE)
 
 add_library(dummy-lib SHARED

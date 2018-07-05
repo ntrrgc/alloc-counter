@@ -7,12 +7,10 @@ __attribute__((constructor)) void init(void) {
     // has already been used.
 
     LibraryContext ctx;
-    fprintf(stderr, "Hi!\n");
 
     initCommMemory();
     PatrolThread::spawn();
 }
 
 __attribute__((destructor))  void fini(void) {
-    printf("Bye\n");
 }

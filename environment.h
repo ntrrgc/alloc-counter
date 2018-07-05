@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <unistd.h>
 
 struct Environment {
     /** Maximum expected life of most (non-leaky) allocations.
@@ -17,6 +18,11 @@ struct Environment {
      *   new allocations coming from unrelated, innocent code may also become
      *   closely watched accidentally. */
     uint32_t timeForAllocationToBecomeSuspicious = parseEnvironIntGreaterThanZero("ALLOC_TIME_SUSPICIOUS", 30);
+
+    /** Once a closely watched allocation enters suspicious state it has this
+     * many second to receive an access and become non suspicious again.
+     * Otherwise, it will be declared a leak. */
+    uint32_t closelyWatchedAllocationsAccessMaxInterval = parseEnvironIntGreaterThanZero("ALLOC_MAX_ACCESS_INTERVAL", 60);
 
     /**
      * @brief closelyWatchedAllocationsRestTime
@@ -36,6 +42,11 @@ struct Environment {
     uint32_t globalMaxLiveCloselyWatchedAllocations = parseEnvironIntGreaterThanZero("ALLOC_GLOBAL_MAX_CLOSELY_WATCHED", 50000);
     uint32_t maxLiveCloselyWatchedAllocationsPerTrace = parseEnvironIntGreaterThanZero("ALLOC_MAX_CLOSELY_WATCHED", 5);
 
+    uint32_t pageSize = sysconf(_SC_PAGESIZE);
+
+    uint32_t roundUpToPageMultiple(uint32_t size) const {
+        return (size + (pageSize - 1)) & ~(pageSize - 1);
+    }
 
 private:
     static unsigned int parseEnvironIntGreaterThanZero(const char* name, int defaultValue);

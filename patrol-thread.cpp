@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <fstream>
 #include <iostream>
+#include <tuple>
 
 PatrolThread* PatrolThread::s_instance = nullptr;
 
@@ -18,36 +19,44 @@ void PatrolThread::spawn() {
 void PatrolThread::monitorMain() {
     LibraryContext ctx;
 
-    sleep(3);
+    sleep(15);
     *__commMemory = WatchState::Watching;
 
-//    ofstream report("/tmp/alloc-report");
-    auto& report = cerr;
+    ofstream report("/tmp/alloc-report");
+//    auto& report = cerr;
     report << "Patrol Thread Hello\n";
-    report << "ALLOC_TIME_SUSPICIOUS = " << environment.timeForAllocationToBecomeSuspicious << " seconds\n";
+
+    unordered_map<StackTrace, unsigned int> stackTraceToOccurrences;
 
     while (true) {
         sleep(5);
-        if (getWatchState() == WatchState::Watching) {
-            AllocationStats::instance().ensureEnabled();
-            double t = AllocationStats::getTime() - AllocationStats::instance().timeWatchEnabled;
-            // At least 1 second should pass before statistics are given, to avoid disproportionate values
-            if (t <= 1)
-                continue;
+        AllocationStats stats;
+        std::vector<AllocationTable::FoundLeak> leaks;
+        std::tie(stats, leaks) = AllocationTable::instance().patrolThreadUpdateAllocationStates();
+        double reportTime = AllocationStats::getTime();
 
-            report << "Allocs per second: " << AllocationStats::instance().allocationCount / t << endl;
-            report << "Frees per second: " << AllocationStats::instance().freeCount / t << endl;
-            report << "Reallocs per second: " << AllocationStats::instance().reallocCount / t << endl;
-
-            {
-                auto leakIterator = AllocationTable::instance().findLeakedEntries(environment.timeForAllocationToBecomeSuspicious);
-                const Allocation* alloc;
-                while ((alloc = leakIterator->next())) {
-                    report << alloc->memory << ": lost " << alloc->size << " bytes at " << alloc->callstackFingerprint << endl;
-                }
-            }
-
-            report.flush();
+        // At least 1 second should pass before statistics are given, to avoid disproportionate values
+        if (stats.enabled && reportTime - stats.timeWatchEnabled >= 1.0) {
+            double t = reportTime - stats.timeWatchEnabled;
+            report << "Allocs per second: " << stats.allocationCount / t << endl;
+            report << "Frees per second: " << stats.freeCount / t << endl;
+            report << "Reallocs per second: " << stats.reallocCount / t << endl;
         }
+
+        for (auto& leak : leaks) {
+            auto& occurrencePair = *stackTraceToOccurrences.insert(make_pair(*leak.stackTrace, 0)).first;
+            ++occurrencePair.second;
+
+            if (occurrencePair.second == 1) {
+                report << "[Callstack " << leak.stackTrace << "] Found new leak: lost "
+                       << leak.memory << " (" << leak.size << " bytes)" << endl;
+                report << *leak.stackTrace << endl;
+            } else {
+                report << "[Callstack " << leak.stackTrace << "] Lost "
+                       << leak.memory << " (" << leak.size << " bytes), "
+                       << occurrencePair.second << " times again." << endl;
+            }
+        }
+        report.flush();
     }
 }

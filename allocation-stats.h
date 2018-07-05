@@ -5,27 +5,19 @@ using namespace std;
 
 class AllocationStats {
 public:
-    std::atomic<unsigned long> allocationCount;
-    std::atomic<unsigned long> freeCount;
-    std::atomic<unsigned long> reallocCount;
+    unsigned long allocationCount = 0;
+    unsigned long freeCount = 0;
+    unsigned long reallocCount = 0;
 
     double timeWatchEnabled = -1;
     bool enabled = false;
 
-    static inline AllocationStats& instance() {
-        return s_instance;
-    }
-
     static double getTime();
 
     void inline ensureEnabled() {
-        if (!enabled)
-            enable();
+        if (!enabled) {
+            enabled = true;
+            timeWatchEnabled = getTime();
+        }
     }
-
-private:
-    void enable();
-    mutex m_mutex;
-
-    static AllocationStats s_instance;
 };

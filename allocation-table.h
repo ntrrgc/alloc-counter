@@ -7,22 +7,27 @@
 #include <functional>
 #include <time.h>
 #include <cassert>
+#include <malloc.h>
+#include <strings.h>
+#include <string.h>
 #include "callstack-fingerprint.h"
 #include "environment.h"
 #include "stack-trace.h"
 #include "watched-stack-trace-info.h"
+#include "allocation-stats.h"
+#include "library-context.h"
+#include "comm-memory.h"
 using namespace std;
 
 struct Allocation {
     void* memory;
-    uint32_t size;
+    uint32_t requestedSize;
     // This is the time when, if reached, the allocation moves to a more suspicious state:
     // If it's a LightAllocation, the fast fingerprint will be marked as suspicious.
     // If it's a CloselyWatchedAllocation, it depends on its state:
     // -> If it is in NotYetSuspicious state, it will become Suspicious.
     // -> If it is in Suspicious state, it will be declared a leak.
     uint32_t deadline;
-    CallstackFingerprint callstackFingerprint;
 
 protected:
     Allocation() {}
@@ -40,20 +45,34 @@ struct CloselyWatchedAllocation : public Allocation {
 
     State state = State::NotYetSuspicious;
     uint32_t allocationTime;
-};
+    WatchedStackTraceInfo* watchedStackTraceInfo;
 
-class SuspiciousStackTracesTable : public unordered_map<StackTrace, WatchedStackTraceInfo> {
-    WatchedStackTraceInfo& getOrCreate(StackTrace&& trace) {
-        value_type kvIter = this->find(trace);
-        if (kvIter != this->end())
-            return kvIter->second;
-
-        this->emplace(std::piecewise_construct, std::forward_as_tuple(trace), std::forward_as_tuple(std::move(trace)));
+    uint32_t actualSize() const {
+        return environment.roundUpToPageMultiple(this->requestedSize);
     }
 };
 
-class SuspiciousFastFingerprintTable : public unordered_multimap<CallstackFingerprint, SuspiciousStackTracesTable> {
+class SuspiciousStackTracesTable : private unordered_map<StackTrace, WatchedStackTraceInfo> {
+public:
+    WatchedStackTraceInfo& getOrCreate(const StackTrace& trace) {
+        auto emplaceRet = this->emplace(std::piecewise_construct, std::forward_as_tuple(trace), std::forward_as_tuple(trace));
+        return emplaceRet.first->second;
+    }
+};
 
+class SuspiciousFingerprintTable : private unordered_map<CallstackFingerprint, SuspiciousStackTracesTable> {
+public:
+    void addSuspiciousFingerprint(CallstackFingerprint fingerprint) {
+        // no-operation if the fingerprint already exists
+        this->emplace(std::piecewise_construct, make_tuple(fingerprint), make_tuple());
+    }
+
+    SuspiciousStackTracesTable* getSuspiciousStackTracesTable(CallstackFingerprint fingerprint) {
+        iterator it = this->find(fingerprint);
+        if (it == end())
+            return nullptr;
+        return &it->second;
+    }
 };
 
 class AllocationTable {
@@ -61,67 +80,220 @@ public:
     AllocationTable() {}
     static AllocationTable& instance() { return s_allocationTable; }
 
-    void allocate(size_t size, CallstackFingerprint fingerprint, function<void*()> preferredAllocator) {
+    enum class ZeroFill {
+        Unnecessary,
+        Needed
+    };
 
-    }
+    static const uint32_t NoAlignment = 1;
 
-    void insertNewEntry(void* memory, uint32_t size, CallstackFingerprint callstackFingerprint) {
+    /** The malloc wrapper must call this *instead* of allocating the memory itself, as an special allocator may be
+     * required for closely watched allocations. */
+    void* instrumentedAllocate(uint32_t size, uint32_t alignment, CallstackFingerprint fingerprint, function<void*()> preferredAllocator, ZeroFill zeroFill) {
+        if (LibraryContext::inLibrary() || getWatchState() == WatchState::NotWatching)
+            return preferredAllocator();
+
+        LibraryContext ctx;
+
         lock_guard<mutex> lock(m_mutex);
-        size_t n = m_lightAllocationsByAddress.size();
-        assert(m_lightAllocationsByAddress.find(memory) == m_lightAllocationsByAddress.end());
-        Allocation* alloc = &m_lightAllocationsByAddress[memory];
-        assert(m_lightAllocationsByAddress.size() == n + 1);
-        alloc->memory = memory;
-        alloc->size = size;
-        alloc->callstackFingerprint = callstackFingerprint;
-        alloc->allocationTime = time(nullptr);
-        alloc->state = AllocationState::Young;
-        alloc->timeout = alloc->allocationTime + environment.timeForAllocationToBecomeSuspicious;
-    }
-
-    Allocation* findEntry(void* memory) {
-        lock_guard<mutex> lock(m_mutex);
-        auto iter = m_lightAllocationsByAddress.find(memory);
-        if (iter != m_lightAllocationsByAddress.end())
-            return &iter->second;
-        else
-            return nullptr;
-    }
-
-    void deleteEntry(void* memory) {
-        lock_guard<mutex> lock(m_mutex);
-        m_lightAllocationsByAddress.erase(memory);
-    }
-
-    void reallocEntry(void* oldMemory, void* newMemory, uint32_t newSize) {
-        lock_guard<mutex> lock(m_mutex);
-
-        if (m_lightAllocationsByAddress.find(oldMemory) == m_lightAllocationsByAddress.end())
-            // This allocation was not recorded, nothing to bookkeep here.
-            return;
-
-        Allocation& alloc = m_lightAllocationsByAddress[oldMemory];
-        alloc.memory = newMemory;
-        alloc.size = newSize;
-
-        assert(m_lightAllocationsByAddress.find(newMemory) == m_lightAllocationsByAddress.end());
-        m_lightAllocationsByAddress[newMemory] = std::move(alloc);
-
-        m_lightAllocationsByAddress.erase(oldMemory);
-    }
-
-    // To be called by Patrol Thread only
-    void updateAllocationStates() {
-        for (auto it = m_lightAllocationsByAddress.begin(); it != m_lightAllocationsByAddress.end(); ++it) {
-
+        m_stats.ensureEnabled();
+        ++m_stats.allocationCount;
+        SuspiciousStackTracesTable* stackTraceTable = m_suspiciousFingerprints.getSuspiciousStackTracesTable(fingerprint);
+        if (!stackTraceTable) {
+            // Unsuspicious fingerprint
+            void* memory = preferredAllocator();
+            if (!memory) {
+                return nullptr;
+            }
+            LightAllocation& alloc = m_lightAllocationsByAddress[memory];
+            alloc.fingerprint = fingerprint;
+            alloc.memory = memory;
+            alloc.requestedSize = size;
+            alloc.deadline = time(nullptr) + environment.timeForAllocationToBecomeSuspicious;
+            return memory;
         }
+
+        StackTrace stackTrace;
+        WatchedStackTraceInfo& watchedStackTraceInfo = stackTraceTable->getOrCreate(stackTrace);
+        if (!watchedStackTraceInfo.needsMoreCloselyWatchedAllocations()) {
+            // Suspicious stack, but we don't need to watch it (e.g. we have enough instances of that stack already).
+            // No tracking is done at all in this case (there is no use on even using a LightAllocation... as the
+            // purpose of a LightAllocation is becoming a CloselyWatchedAllocation if unfreed, and this has already
+            // happened.
+            watchedStackTraceInfo.countSkippedAllocations++;
+            return preferredAllocator();
+        }
+
+        // Allocation coming from a suspicious stack we should watch.
+        watchedStackTraceInfo.countLiveCloselyWatchedAllocations++;
+        watchedStackTraceInfo.countTotalCloselyWatchedAllocationsEverCreated++;
+
+        // memalign() will round `alignment` to the next power of two if necessary (unlikely) -- at least in glibc.
+        void* memory = memalign(std::max(alignment, environment.pageSize), environment.roundUpToPageMultiple(size));
+        if (!memory)
+            return nullptr;
+
+        if (zeroFill == ZeroFill::Needed)
+            bzero(memory, size);
+
+        CloselyWatchedAllocation& alloc = m_closelyWatchedAllocationsByAddress[memory];
+        alloc.memory = memory;
+        alloc.requestedSize = size; // less or equal the size actually allocated
+        alloc.allocationTime = time(nullptr);
+        alloc.deadline = alloc.allocationTime + environment.timeForAllocationToBecomeSuspicious;
+        alloc.state = CloselyWatchedAllocation::State::NotYetSuspicious;
+        alloc.watchedStackTraceInfo = &watchedStackTraceInfo;
+        return memory;
     }
 
+    void* instrumentedReallocate(void* oldMemory, size_t newRequestedSize, function<void*()> preferredReallocator) {
+        if (LibraryContext::inLibrary() || getWatchState() == WatchState::NotWatching)
+            return preferredReallocator();
+
+        LibraryContext ctx;
+
+        lock_guard<mutex> lock(m_mutex);
+        m_stats.ensureEnabled();
+        ++m_stats.reallocCount;
+
+        {
+            auto it = m_lightAllocationsByAddress.find(oldMemory);
+            if (it != m_lightAllocationsByAddress.end()) {
+                // Realloc LightAllocation
+                LightAllocation& alloc = it->second;
+                alloc.requestedSize = newRequestedSize;
+                void* newMemory = preferredReallocator();
+                if (newMemory != oldMemory) {
+                    alloc.memory = newMemory;
+                    m_lightAllocationsByAddress.insert(make_pair(newMemory, alloc));
+                    m_lightAllocationsByAddress.erase(it);
+                }
+                return newMemory;
+            }
+        }
+
+        {
+            auto it = m_closelyWatchedAllocationsByAddress.find(oldMemory);
+            if (it != m_closelyWatchedAllocationsByAddress.end()) {
+                // Realloc CloselyWatchedAllocation
+                CloselyWatchedAllocation& alloc = it->second;
+                size_t oldActualSize = environment.roundUpToPageMultiple(alloc.requestedSize);
+                size_t newActualSize = environment.roundUpToPageMultiple(newRequestedSize);
+                if (newActualSize != oldActualSize) {
+                    // TODO Remove watchpoint
+                    // Unfortunately, there is no function to realloc aligned memory and keep the alignment, so we have
+                    // to make a new allocation and copy memory.
+                    void* newMemory = pvalloc(newRequestedSize);
+                    memcpy(newMemory, oldMemory, alloc.requestedSize);
+                    alloc.requestedSize = newRequestedSize;
+                    alloc.memory = newMemory;
+                    m_closelyWatchedAllocationsByAddress.insert(make_pair(newMemory, alloc));
+                    m_closelyWatchedAllocationsByAddress.erase(it);
+                    return newMemory;
+                } else {
+                    // The underlying size in pages is the same, so skip allocation.
+                    alloc.requestedSize = newRequestedSize;
+                    return oldMemory;
+                }
+            }
+        }
+
+        // Realloc uninstrumented allocation
+        return preferredReallocator();
+    }
+
+    void instrumentedFree(void* memory, std::function<void()> freeFunction) {
+        if (!memory) {
+            // Nothing to do with free(NULL);
+            return;
+        }
+
+        if (LibraryContext::inLibrary() || getWatchState() == WatchState::NotWatching) {
+            freeFunction();
+            return;
+        }
+
+        LibraryContext ctx;
+
+        lock_guard<mutex> lock(m_mutex);
+        m_stats.ensureEnabled();
+        ++m_stats.freeCount;
+
+        {
+            auto it = m_lightAllocationsByAddress.find(memory);
+            if (it != m_lightAllocationsByAddress.end()) {
+                m_lightAllocationsByAddress.erase(it);
+                return;
+            }
+        }
+
+        {
+            auto it = m_closelyWatchedAllocationsByAddress.find(memory);
+            if (it != m_closelyWatchedAllocationsByAddress.end()) {
+                CloselyWatchedAllocation& alloc = it->second;
+                alloc.watchedStackTraceInfo->countLiveCloselyWatchedAllocations--;
+                alloc.watchedStackTraceInfo->countLiveCloselyWatchedAllocationsAllTraces--;
+                // TODO Remove watchpoint
+                m_closelyWatchedAllocationsByAddress.erase(it);
+            }
+        }
+
+        freeFunction();
+    }
+
+    struct FoundLeak {
+        StackTrace* stackTrace;
+        void* memory;
+        uint32_t size;
+    };
+
+    // To be called from Patrol Thread only
+    std::tuple<AllocationStats, vector<FoundLeak>> patrolThreadUpdateAllocationStates() {
+        uint32_t now = time(nullptr);
+        lock_guard<mutex> lock(m_mutex);
+        vector<FoundLeak> foundLeaks;
+
+        for (auto it = m_lightAllocationsByAddress.begin(); it != m_lightAllocationsByAddress.end(); ) {
+            LightAllocation& alloc = it->second;
+            if (alloc.deadline < now) {
+                m_suspiciousFingerprints.addSuspiciousFingerprint(alloc.fingerprint);
+                it = m_lightAllocationsByAddress.erase(it);
+            } else {
+                ++it;
+            }
+        }
+
+        for (auto it = m_closelyWatchedAllocationsByAddress.begin(); it != m_closelyWatchedAllocationsByAddress.end(); ) {
+            CloselyWatchedAllocation& alloc = it->second;
+            if (alloc.deadline < now) {
+                switch (alloc.state) {
+                case CloselyWatchedAllocation::State::NotYetSuspicious:
+                    alloc.state = CloselyWatchedAllocation::State::Suspicious;
+                    alloc.deadline = now + environment.closelyWatchedAllocationsAccessMaxInterval;
+                    // TODO add MemoryProtector watch
+                    ++it;
+                    break;
+                case CloselyWatchedAllocation::State::Suspicious:
+                    alloc.watchedStackTraceInfo->countLeakedCloselyWatchedAllocations++;
+                    alloc.watchedStackTraceInfo->countLiveCloselyWatchedAllocations--;
+                    alloc.watchedStackTraceInfo->countLiveCloselyWatchedAllocationsAllTraces--;
+                    alloc.watchedStackTraceInfo->countTotalLeakedMemory += alloc.requestedSize;
+                    foundLeaks.push_back({ &alloc.watchedStackTraceInfo->stackTrace, alloc.memory, alloc.requestedSize });
+                    it = m_closelyWatchedAllocationsByAddress.erase(it);
+                }
+            } else {
+                ++it;
+            }
+        }
+        return make_tuple(m_stats, foundLeaks);
+    }
 
 private:
     static AllocationTable s_allocationTable;
 
+    mutex m_mutex;
     unordered_map<void*, LightAllocation> m_lightAllocationsByAddress;
     unordered_map<void*, CloselyWatchedAllocation> m_closelyWatchedAllocationsByAddress;
-    mutex m_mutex;
+    SuspiciousFingerprintTable m_suspiciousFingerprints;
+    AllocationStats m_stats;
 };

@@ -1,5 +1,7 @@
 #pragma once
 #include <cstdint>
+#include <set>
+using namespace std;
 
 typedef uint32_t CallstackFingerprint;
 
@@ -13,9 +15,3 @@ inline CallstackFingerprint computeCallstackFingerprint(void* stackPointer, void
         ^ pointerToInt(returnAddress)
         ^ (allocationSize * 786433);
 }
-
-
-class SuspiciousFastFingerprints {
-    set<CallstackFingerprint> m_suspiciousFastFingerprints;
-
-};
