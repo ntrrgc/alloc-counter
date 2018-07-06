@@ -14,11 +14,11 @@ WatchState * __commMemory = dummyCommMemory;
 
 void initCommMemory()
 {
-    return;
     int fd = open("/tmp/alloc-comm", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
     if (fd == -1)
         abort();
-    if (4 != write(fd, "\0\0\0", 4))
+    int32_t value = static_cast<int32_t>(WatchState::NotWatching);
+    if (sizeof(value) != write(fd, &value, sizeof(value)))
         abort();
 
     __commMemory = static_cast<WatchState*>(mmap(nullptr, 4, PROT_WRITE | PROT_READ, MAP_SHARED, fd, 0));

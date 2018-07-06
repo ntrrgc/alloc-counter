@@ -36,12 +36,14 @@ void PatrolThread::spawn() {
 void PatrolThread::monitorMain() {
     LibraryContext ctx;
 
-    sleep(15);
-    *__commMemory = WatchState::Watching;
-
     ofstream leakStream("/tmp/leak-report");
     ofstream progressStream("/tmp/alloc-report");
     progressStream << "Patrol Thread Hello\n";
+
+    if (environment.autoStartTime != 0) {
+        sleep(environment.autoStartTime);
+        *__commMemory = WatchState::Watching;
+    }
 
     unordered_map<StackTrace, unsigned int> stackTraceToOccurrences;
     double timeNextLeakReport = 0;

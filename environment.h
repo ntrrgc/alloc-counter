@@ -22,7 +22,9 @@ struct Environment {
     /** Once a closely watched allocation enters suspicious state it has this
      * many second to receive an access and become non suspicious again.
      * Otherwise, it will be declared a leak. */
-    uint32_t closelyWatchedAllocationsAccessMaxInterval = parseEnvironIntGreaterThanZero("ALLOC_MAX_ACCESS_INTERVAL", 60);
+    // TODO This iss et to 1 because the memory protector is not integrated yet, so we'd rather consider it a leak at
+    // this point rather than wait for an event that won't happen because it's not coded.
+    uint32_t closelyWatchedAllocationsAccessMaxInterval = parseEnvironIntGreaterThanZero("ALLOC_MAX_ACCESS_INTERVAL", 1);
 
     /**
      * @brief closelyWatchedAllocationsRestTime
@@ -45,6 +47,11 @@ struct Environment {
     uint32_t leakReportInterval = parseEnvironIntGreaterThanZero("ALLOC_LEAK_REPORT_INTERVAL", 30);
 
     uint32_t pageSize = sysconf(_SC_PAGESIZE);
+
+    /** Once this much time passes (in seconds) memory checks will begin. At this point all application initialization
+     * should have completed (to avoid reporting false leaks on startup artifacts.
+     * Zero means auto start is disabled, memory checks will start when `alloc-counter-start` is invoked. */
+    uint32_t autoStartTime = parseEnvironIntGreaterThanZero("ALLOC_AUTO_START_TIME", 0);
 
     uint32_t roundUpToPageMultiple(uint32_t size) const {
         return (size + (pageSize - 1)) & ~(pageSize - 1);
