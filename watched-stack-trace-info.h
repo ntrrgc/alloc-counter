@@ -30,7 +30,7 @@ struct WatchedStackTraceInfo {
     static uint32_t countLiveCloselyWatchedAllocationsAllTraces;
 
     // 1.0 -> leaks always, 0.0 -> never leaks, NaN -> no info
-    float leakRate() const {
+    float leakRatio() const {
         return (float) countLeakedCloselyWatchedAllocations / countFinishedWatchedAllocations();
     }
 
@@ -53,7 +53,25 @@ struct WatchedStackTraceInfo {
         return hasLeaks() != Trilean::False;
     }
 
+    float lostAllocationsEstimated() const {
+        if (countFinishedWatchedAllocations() == 0)
+            return 0;
+        return countTotalAllocations() * leakRatio();
+    }
+
+    float lostBytesEstimated() const {
+        return countTotalLeakedMemory / watchRate();
+    }
+
 private:
+    float watchRate() const {
+        return (float) countTotalCloselyWatchedAllocationsEverCreated / countTotalAllocations();
+    }
+
+    uint32_t countTotalAllocations() const {
+        return countSkippedAllocations + countTotalCloselyWatchedAllocationsEverCreated;
+    }
+
     uint32_t countFinishedWatchedAllocations() const {
         return countTotalCloselyWatchedAllocationsEverCreated -
             countLiveCloselyWatchedAllocations;

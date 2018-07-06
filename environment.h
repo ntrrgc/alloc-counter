@@ -42,6 +42,8 @@ struct Environment {
     uint32_t globalMaxLiveCloselyWatchedAllocations = parseEnvironIntGreaterThanZero("ALLOC_GLOBAL_MAX_CLOSELY_WATCHED", 50000);
     uint32_t maxLiveCloselyWatchedAllocationsPerTrace = parseEnvironIntGreaterThanZero("ALLOC_MAX_CLOSELY_WATCHED", 5);
 
+    uint32_t leakReportInterval = parseEnvironIntGreaterThanZero("ALLOC_LEAK_REPORT_INTERVAL", 30);
+
     uint32_t pageSize = sysconf(_SC_PAGESIZE);
 
     uint32_t roundUpToPageMultiple(uint32_t size) const {

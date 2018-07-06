@@ -52,7 +52,7 @@ struct CloselyWatchedAllocation : public Allocation {
     }
 };
 
-class SuspiciousStackTracesTable : private unordered_map<StackTrace, WatchedStackTraceInfo> {
+class SuspiciousStackTracesTable : public unordered_map<StackTrace, WatchedStackTraceInfo> {
 public:
     WatchedStackTraceInfo& getOrCreate(const StackTrace& trace) {
         auto emplaceRet = this->emplace(std::piecewise_construct, std::forward_as_tuple(trace), std::forward_as_tuple(trace));
@@ -60,7 +60,7 @@ public:
     }
 };
 
-class SuspiciousFingerprintTable : private unordered_map<CallstackFingerprint, SuspiciousStackTracesTable> {
+class SuspiciousFingerprintTable : public unordered_map<CallstackFingerprint, SuspiciousStackTracesTable> {
 public:
     void addSuspiciousFingerprint(CallstackFingerprint fingerprint) {
         // no-operation if the fingerprint already exists
@@ -115,6 +115,7 @@ public:
 
         StackTrace stackTrace;
         WatchedStackTraceInfo& watchedStackTraceInfo = stackTraceTable->getOrCreate(stackTrace);
+        ++m_stats.allocationWithSuspiciousFingerprintCount;
         if (!watchedStackTraceInfo.needsMoreCloselyWatchedAllocations()) {
             // Suspicious stack, but we don't need to watch it (e.g. we have enough instances of that stack already).
             // No tracking is done at all in this case (there is no use on even using a LightAllocation... as the
@@ -286,6 +287,63 @@ public:
             }
         }
         return make_tuple(m_stats, foundLeaks);
+    }
+
+    struct LeakReport {
+        struct Leak {
+            StackTrace* stackTrace;
+            float leakRatio;
+            float lostAllocationsEstimated;
+            float lostBytesEstimated;
+        };
+        float ratioAllocationHasSuspiciousFingerprint;
+        float averageStackTracesPerFingerprint;
+        float ratioLeakyStacks;
+        float ratioNonLeakyStacks;
+        float ratioMaybeLeakyStats;
+        vector<Leak> leaks;
+    };
+
+    LeakReport patrolThreadMakeLeakReport() {
+        LeakReport report;
+        uint32_t countFingerprints = 0;
+        uint32_t countStacks = 0;
+        uint32_t countLeakyStacks = 0;
+        uint32_t countNonLeakyStacks = 0;
+        uint32_t countMaybeLeakyStacks = 0;
+        {
+            lock_guard<mutex> lock(m_mutex);
+            for (auto& fingerprintPair : m_suspiciousFingerprints) {
+                countFingerprints++;
+                for (auto& watchedTracePair: fingerprintPair.second) {
+                    countStacks++;
+                    WatchedStackTraceInfo& trace = watchedTracePair.second;
+                    switch (trace.hasLeaks()) {
+                    case Trilean::True:
+                        countLeakyStacks++;
+                        report.leaks.push_back({ &trace.stackTrace, trace.leakRatio(),
+                                                 trace.lostAllocationsEstimated(), trace.lostBytesEstimated() });
+                        break;
+                    case Trilean::False:
+                        countNonLeakyStacks++;
+                        break;
+                    case Trilean::Unknown:
+                        countMaybeLeakyStacks++;
+                    }
+                }
+            }
+            report.ratioAllocationHasSuspiciousFingerprint =
+                    (float) m_stats.allocationWithSuspiciousFingerprintCount / m_stats.allocationCount;
+        }
+        report.averageStackTracesPerFingerprint = (float) countStacks / countFingerprints;
+        report.ratioLeakyStacks = (float) countLeakyStacks / countStacks;
+        report.ratioNonLeakyStacks = (float) countNonLeakyStacks / countStacks;
+        report.ratioMaybeLeakyStats = (float) countMaybeLeakyStacks / countStacks;
+
+        std::sort(report.leaks.begin(), report.leaks.end(), [](const LeakReport::Leak& a, const LeakReport::Leak& b) {
+            return a.lostBytesEstimated >= b.lostBytesEstimated;
+        });
+        return report;
     }
 
 private:

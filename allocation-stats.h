@@ -6,6 +6,7 @@ using namespace std;
 class AllocationStats {
 public:
     unsigned long allocationCount = 0;
+    unsigned long allocationWithSuspiciousFingerprintCount = 0;
     unsigned long freeCount = 0;
     unsigned long reallocCount = 0;
 
