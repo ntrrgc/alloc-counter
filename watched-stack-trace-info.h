@@ -24,48 +24,38 @@ struct WatchedStackTraceInfo {
     size_t   countTotalLeakedMemory = 0;
     uint64_t countSkippedAllocations = 0;
 
-    // Hold this mutex briefly while reading or updating any of the above stats.
-    mutable std::mutex statsMutex; // TODO should the AllocationTable lock suffice?
-
     // Global statistics:
     // There is a limit on the number of closely watched allocations because
     // the number of sections we can mprotect() is limited (65k in Linux x86_64).
-    static atomic<uint32_t> countLiveCloselyWatchedAllocationsAllTraces;
+    static uint32_t countLiveCloselyWatchedAllocationsAllTraces;
 
     // 1.0 -> leaks always, 0.0 -> never leaks, NaN -> no info
     float leakRate() const {
-        lock_guard<mutex> lock(statsMutex);
-        return (float) countLeakedCloselyWatchedAllocations / countFinishedWatchedAllocationsUnlocked();
+        return (float) countLeakedCloselyWatchedAllocations / countFinishedWatchedAllocations();
     }
 
     Trilean hasLeaks() const {
-        lock_guard<mutex> lock(statsMutex);
-        return hasLeaksUnlocked();
+        if (countLeakedCloselyWatchedAllocations > 0)
+            return Trilean::True;
+        else if (countFinishedWatchedAllocations() >= environment.enoughSamplesToProveNoLeak)
+            return Trilean::False;
+        else
+            return Trilean::Unknown;
     }
 
     bool needsMoreCloselyWatchedAllocations() const {
-        lock_guard<mutex> lock(statsMutex);
         if (countLiveCloselyWatchedAllocations >= environment.maxLiveCloselyWatchedAllocationsPerTrace)
             return false;
         if (countLiveCloselyWatchedAllocationsAllTraces >= environment.globalMaxLiveCloselyWatchedAllocations)
             return false;
         // If it has proven not to be a leak, it's fine, we don't need more samples...
         // BUT if it has proven to be a leak we still want more samples to know how often that happens.
-        return hasLeaksUnlocked() != Trilean::False;
+        return hasLeaks() != Trilean::False;
     }
 
 private:
-    uint32_t countFinishedWatchedAllocationsUnlocked() const {
+    uint32_t countFinishedWatchedAllocations() const {
         return countTotalCloselyWatchedAllocationsEverCreated -
             countLiveCloselyWatchedAllocations;
-    }
-
-    Trilean hasLeaksUnlocked() const {
-        if (countLeakedCloselyWatchedAllocations > 0)
-            return Trilean::True;
-        else if (countFinishedWatchedAllocationsUnlocked() >= environment.enoughSamplesToProveNoLeak)
-            return Trilean::False;
-        else
-            return Trilean::Unknown;
     }
 };
