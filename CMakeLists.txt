@@ -33,6 +33,9 @@ target_compile_options(alloc-counter PUBLIC -Wall -std=c++14)
 target_link_libraries(alloc-counter dl pthread unwind)
 target_compile_definitions(alloc-counter PUBLIC _GNU_SOURCE)
 
+add_executable(alloc-counter-start
+    "alloc-counter-start.cpp")
+
 add_library(dummy-lib SHARED
     "dummy-lib.h"
     "dummy-lib.cpp"
