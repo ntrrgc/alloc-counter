@@ -11,7 +11,15 @@ uint32_t inline pointerToInt(void * pointer) {
 }
 
 inline CallstackFingerprint computeCallstackFingerprint(void* stackPointer, void* returnAddress, uint32_t allocationSize) {
+    uint32_t sizeClass;
+    if (allocationSize < 100)
+        sizeClass = allocationSize;
+    else if (allocationSize < 2048)
+        sizeClass = 769; // arbitrary value (it just needs to be different than other size classes)
+    else
+        sizeClass = 49157;
+
     return (pointerToInt(stackPointer) << 1)
         ^ pointerToInt(returnAddress)
-        ^ (allocationSize * 786433);
+        ^ (sizeClass * 786433);
 }
