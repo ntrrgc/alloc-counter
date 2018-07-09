@@ -87,8 +87,10 @@ void PatrolThread::monitorMain() {
         if (reportTime > timeNextLeakReport) {
             AllocationTable::LeakReport leakReport = AllocationTable::instance().patrolThreadMakeLeakReport();
             leakStream << "[t=" << (reportTime - stats.timeWatchEnabled) << "] Begin leak report:"  << endl;
-            leakStream<< "Ratio suspicious fingerprint/allocations: " <<
-                         leakReport.ratioAllocationHasSuspiciousFingerprint << endl;
+            if (!isnan(leakReport.ratioAllocationHasSuspiciousFingerprint)) {
+                leakStream << "Ratio suspicious fingerprint/allocations: " <<
+                             leakReport.ratioAllocationHasSuspiciousFingerprint << endl;
+            }
             if (!isnan(leakReport.averageStackTracesPerFingerprint)) {
                 leakStream << "Average number of stack traces per suspicious fingerprint: " <<
                               leakReport.averageStackTracesPerFingerprint << endl;
