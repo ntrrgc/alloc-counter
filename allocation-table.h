@@ -224,7 +224,7 @@ public:
             auto it = m_lightAllocationsByAddress.find(memory);
             if (it != m_lightAllocationsByAddress.end()) {
                 m_lightAllocationsByAddress.erase(it);
-                return;
+                goto freeAndReturn;
             }
         }
 
@@ -239,6 +239,7 @@ public:
             }
         }
 
+freeAndReturn:
         freeFunction();
     }
 
