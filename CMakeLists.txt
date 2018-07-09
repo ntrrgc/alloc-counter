@@ -40,6 +40,7 @@ add_library(dummy-lib SHARED
     "dummy-lib.h"
     "dummy-lib.cpp"
     )
+target_compile_options(dummy-lib PUBLIC -Wall -std=c++14)
 
 add_executable(test-stack-traces
     "stack-trace.h"
