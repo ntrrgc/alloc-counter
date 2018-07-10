@@ -2,6 +2,11 @@
 #include <functional>
 #include <mutex>
 #include <set>
+#include <signal.h>
+#include <cassert>
+#include <sys/mman.h>
+#include <unistd.h>
+#include "environment.h"
 using namespace std;
 
 class PointerRange {
@@ -38,7 +43,6 @@ public:
     }
 };
 
-#if FALSE //TODO
 class MemoryProtector {
 public:
     static void initialize() {
@@ -53,7 +57,7 @@ public:
     // Called only from patrol thread.
     void watchRange(void* _start, size_t size, function<void()> onAccess) {
         char* start = (char*) _start;
-        // TODO ensure page-aligned
+        assert((uintptr_t) start == ((uintptr_t) start & ~(environment.pageSize - 1))); // page aligned
         {
             lock_guard<mutex> lock(mutex);
             // No intersections:
@@ -63,7 +67,7 @@ public:
             m_watchedPages.insert(allocationRange);
 
             if (0 != mprotect(start, size, PROT_NONE)) {
-                perror("watchRange: ");
+                perror("watchRange");
                 abort();
             }
         }
@@ -75,7 +79,7 @@ public:
         PointerRangeList::iterator rangeIter = m_watchedPages.findContainingPointer(start);
         if (rangeIter != m_watchedPages.end()) {
             if (0 != mprotect(rangeIter->start, rangeIter->size(), PROT_READ | PROT_WRITE)) {
-                perror("removeWatch: ");
+                perror("removeWatch");
                 abort();
             }
             m_watchedPages.erase(rangeIter);
@@ -104,7 +108,7 @@ private:
         sigdelset(&newSigAction.sa_mask, SIGSTKFLT);
 
         if (0 != sigaction(SIGSEGV, &newSigAction, &oldSigAction)) {
-            perror("MemoryUsageWatcher: could not set up signal handler: ");
+            perror("MemoryUsageWatcher: could not set up signal handler");
             abort();
         }
     }
@@ -145,7 +149,7 @@ public:
         PointerRangeList::iterator rangeIter = m_watchedPages.findContainingPointer(accessedAddress);
         if (rangeIter != m_watchedPages.end()) {
             if (0 != mprotect(rangeIter->start, rangeIter->size(), PROT_READ | PROT_WRITE)) {
-                perror("segfaultHandler: ");
+                perror("segfaultHandler");
                 abort();
             }
             rangeIter->onAccess();
@@ -167,4 +171,3 @@ public:
         instance().segfaultHandler(siginfo->si_addr);
     }
 };
-#endif
