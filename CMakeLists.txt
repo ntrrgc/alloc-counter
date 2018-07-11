@@ -50,3 +50,9 @@ add_executable(test-stack-traces
 target_compile_options(test-stack-traces PUBLIC -Wall -std=c++14)
 target_link_libraries(test-stack-traces dl pthread unwind dummy-lib)
 target_compile_definitions(test-stack-traces PUBLIC _GNU_SOURCE)
+
+add_executable(leaking-app
+    "leaking-app.cpp"
+    )
+target_compile_options(leaking-app PUBLIC -Wall -std=c++14)
+target_link_libraries(leaking-app dummy-lib)
