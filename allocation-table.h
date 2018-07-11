@@ -113,9 +113,9 @@ public:
             return memory;
         }
 
+        ++m_stats.allocationWithSuspiciousFingerprintCount;
         StackTrace stackTrace;
         WatchedStackTraceInfo& watchedStackTraceInfo = stackTraceTable->getOrCreate(stackTrace);
-        ++m_stats.allocationWithSuspiciousFingerprintCount;
         if (!watchedStackTraceInfo.needsMoreCloselyWatchedAllocations()) {
             // Suspicious stack, but we don't need to watch it (e.g. we have enough instances of that stack already).
             // No tracking is done at all in this case (there is no use on even using a LightAllocation... as the
