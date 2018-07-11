@@ -58,18 +58,16 @@ public:
     void watchRange(void* _start, size_t size, function<void()> onAccess) {
         char* start = (char*) _start;
         assert((uintptr_t) start == ((uintptr_t) start & ~(environment.pageSize - 1))); // page aligned
-        {
-            lock_guard<mutex> lock(mutex);
-            // No intersections:
-            assert(!m_watchedPages.contains(start));
-            assert(!m_watchedPages.contains(start + size));
-            PointerRange allocationRange { start, start + size, onAccess };
-            m_watchedPages.insert(allocationRange);
+        lock_guard<mutex> lock(mutex);
+        // No intersections:
+        assert(!m_watchedPages.contains(start));
+        assert(!m_watchedPages.contains(start + size));
+        PointerRange allocationRange { start, start + size, onAccess };
+        m_watchedPages.insert(allocationRange);
 
-            if (0 != mprotect(start, size, PROT_NONE)) {
-                perror("watchRange");
-                abort();
-            }
+        if (0 != mprotect(start, size, PROT_NONE)) {
+            perror("watchRange");
+            abort();
         }
     }
 
