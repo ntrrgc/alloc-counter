@@ -126,9 +126,6 @@ public:
         }
 
         // Allocation coming from a suspicious stack we should watch.
-        watchedStackTraceInfo.countLiveCloselyWatchedAllocations++;
-        watchedStackTraceInfo.countTotalCloselyWatchedAllocationsEverCreated++;
-
         // memalign() will round `alignment` to the next power of two if necessary (unlikely) -- at least in glibc.
         void* memory = memalign(std::max(alignment, environment.pageSize), environment.roundUpToPageMultiple(size));
         if (!memory)
@@ -136,6 +133,10 @@ public:
 
         if (zeroFill == ZeroFill::Needed)
             bzero(memory, size);
+
+        watchedStackTraceInfo.countLiveCloselyWatchedAllocations++;
+        watchedStackTraceInfo.countLiveCloselyWatchedAllocationsAllTraces++;
+        watchedStackTraceInfo.countTotalCloselyWatchedAllocationsEverCreated++;
 
         CloselyWatchedAllocation& alloc = m_closelyWatchedAllocationsByAddress[memory];
         alloc.memory = memory;
