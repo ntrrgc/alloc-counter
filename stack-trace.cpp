@@ -3,6 +3,7 @@
 #include <libunwind.h>
 #include <dlfcn.h>
 #include <cassert>
+#include "environment.h"
 
 static_assert(sizeof(void*) == sizeof(unw_word_t), "In this machine the register size and pointer size don't match.");
 
@@ -42,9 +43,8 @@ size_t offset(void* base, void* pointer) {
 
 ostream &operator<<(ostream &os, const StackTrace &st)
 {
-    int frameNumber = st.m_returnAddresses.size();
+    int frameNumber = 0;
     for (void* returnAddress : st.m_returnAddresses) {
-        // TODO unset thumb bit?
         Dl_info info;
         int dladdrSuccess = dladdr(returnAddress, &info);
 
@@ -57,10 +57,11 @@ ostream &operator<<(ostream &os, const StackTrace &st)
             os << " in " << info.dli_sname << "+" << offset(info.dli_saddr, returnAddress);
         }
         if (dladdrSuccess && info.dli_fname) {
-            os << " (" << info.dli_fname << "+0x" << hex << offset(info.dli_fbase, returnAddress) << dec << ")";
+            os << " (" << info.dli_fname << ":" << environment.archName << "+0x"
+               << hex << offset(info.dli_fbase, returnAddress) << dec << ")";
         }
         os << endl;
-        frameNumber--;
+        frameNumber++;
     }
     return os << dec;
 }

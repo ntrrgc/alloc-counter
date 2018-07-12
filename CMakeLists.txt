@@ -45,6 +45,8 @@ target_compile_options(dummy-lib PUBLIC -Wall -std=c++14)
 add_executable(test-stack-traces
     "stack-trace.h"
     "stack-trace.cpp"
+    "environment.h"
+    "environment.cpp"
     "test-stack-traces.cpp"
     )
 target_compile_options(test-stack-traces PUBLIC -Wall -std=c++14)

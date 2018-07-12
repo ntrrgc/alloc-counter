@@ -1,6 +1,9 @@
 #pragma once
 #include <cstdint>
 #include <unistd.h>
+#include <sys/utsname.h>
+#include <string>
+using namespace std;
 
 struct Environment {
     /** Maximum expected life of most (non-leaky) allocations.
@@ -52,6 +55,16 @@ struct Environment {
      * should have completed (to avoid reporting false leaks on startup artifacts.
      * Zero means auto start is disabled, memory checks will start when `alloc-counter-start` is invoked. */
     uint32_t autoStartTime = parseEnvironIntGreaterThanZero("ALLOC_AUTO_START_TIME", 0);
+
+    std::string archName = []() noexcept {
+        struct utsname utsname;
+        int ret = uname(&utsname);
+        if (ret != 0) {
+            perror("uname");
+            exit(1);
+        }
+        return std::string(utsname.machine);
+    }();
 
     uint32_t roundUpToPageMultiple(uint32_t size) const {
         return (size + (pageSize - 1)) & ~(pageSize - 1);
