@@ -46,13 +46,17 @@ ostream &operator<<(ostream &os, const StackTrace &st)
     for (void* returnAddress : st.m_returnAddresses) {
         // TODO unset thumb bit?
         Dl_info info;
-        dladdr(returnAddress, &info);
+        int dladdrSuccess = dladdr(returnAddress, &info);
 
         os << "    #" << frameNumber << " " << returnAddress;
-        if (info.dli_sname) {
+        if (!dladdrSuccess) {
+            // This supposed return pointer does not actually point to a code section of any executable.
+            os << " [GARBAGE]";
+        }
+        if (dladdrSuccess && info.dli_sname) {
             os << " in " << info.dli_sname << "+" << offset(info.dli_saddr, returnAddress);
         }
-        if (info.dli_fname) {
+        if (dladdrSuccess && info.dli_fname) {
             os << " (" << info.dli_fname << "+0x" << hex << offset(info.dli_fbase, returnAddress) << dec << ")";
         }
         os << endl;
