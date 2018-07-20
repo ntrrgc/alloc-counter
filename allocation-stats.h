@@ -9,6 +9,7 @@ public:
     unsigned long allocationWithSuspiciousFingerprintCount = 0;
     unsigned long freeCount = 0;
     unsigned long reallocCount = 0;
+    int64_t liveBytes = 0;
 
     double timeWatchEnabled = -1;
     bool enabled = false;

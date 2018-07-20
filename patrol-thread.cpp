@@ -12,6 +12,10 @@
 #include <string>
 #include <sstream>
 #include <cmath>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <inttypes.h>
 
 PatrolThread* PatrolThread::s_instance = nullptr;
 
@@ -33,11 +37,46 @@ void PatrolThread::spawn() {
     s_instance = new PatrolThread;
 }
 
+static bool startsWith(const char*__restrict aString, const char *__restrict prefix)
+{
+    while(*prefix) {
+        if(*prefix++ != *aString++)
+            return false;
+    }
+    return true;
+}
+
+static int64_t getRssKB() {
+    FILE* fp = fopen("/proc/self/status", "r");
+    if (fp < 0) {
+        perror("open(/proc/self/status)");
+        exit(1);
+    }
+
+    char* line = nullptr;
+    size_t size = 0;
+    int nread;
+    while ((nread = getline(&line, &size, fp)) != -1) {
+        if (startsWith(line, "VmRSS:")) {
+            int64_t rssKB;
+            int nelements = sscanf(line, "VmRSS: %" PRId64 " kB", &rssKB);
+            if (nelements != 1) {
+                perror("getRSS:scanf");
+                exit(1);
+            }
+            free(line);
+            return rssKB;
+        }
+    }
+    throw std::runtime_error("Could not read VmRSS.");
+}
+
 void PatrolThread::monitorMain() {
     LibraryContext ctx;
 
     ofstream leakStream("/tmp/leak-report");
     ofstream progressStream("/tmp/alloc-report");
+    ofstream memoryUsageStream("/tmp/memory-report");
     progressStream << "Patrol Thread Hello\n";
 
     if (environment.autoStartTime != 0) {
@@ -47,6 +86,8 @@ void PatrolThread::monitorMain() {
 
     unordered_map<StackTrace, unsigned int> stackTraceToOccurrences;
     double timeNextLeakReport = 0;
+    int64_t baseRSS = 0;
+    time_t baseTime = 0;
 
     while (true) {
         sleep(5);
@@ -61,6 +102,18 @@ void PatrolThread::monitorMain() {
             progressStream << "Allocs per second: " << stats.allocationCount / t << endl;
             progressStream << "Frees per second: " << stats.freeCount / t << endl;
             progressStream << "Reallocs per second: " << stats.reallocCount / t << endl;
+        }
+
+        if (stats.enabled && baseRSS == 0) {
+            baseRSS = getRssKB();
+            baseTime = time(nullptr);
+            memoryUsageStream << "#Time\tRSS\tAllocated\n";
+        }
+
+        if (stats.enabled) {
+            memoryUsageStream << time(nullptr) - baseTime << "\t"
+                << 1024 * (getRssKB() - baseRSS) << "\t"
+                << stats.liveBytes << endl;
         }
 
         for (auto& leak : leaks) {

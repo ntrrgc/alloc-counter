@@ -87,6 +87,20 @@ public:
 
     static const uint32_t NoAlignment = 1;
 
+    void* makeLightAllocation(function<void*()> preferredAllocator, CallstackFingerprint fingerprint, uint32_t requestedSize) {
+        void* memory = preferredAllocator();
+        if (!memory) {
+            return nullptr;
+        }
+        LightAllocation& alloc = m_lightAllocationsByAddress[memory];
+        m_stats.liveBytes += requestedSize;
+        alloc.fingerprint = fingerprint;
+        alloc.memory = memory;
+        alloc.requestedSize = requestedSize;
+        alloc.deadline = time(nullptr) + environment.timeForAllocationToBecomeSuspicious;
+        return memory;
+    }
+
     /** The malloc wrapper must call this *instead* of allocating the memory itself, as an special allocator may be
      * required for closely watched allocations. */
     void* instrumentedAllocate(uint32_t size, uint32_t alignment, CallstackFingerprint fingerprint, function<void*()> preferredAllocator, ZeroFill zeroFill) {
@@ -101,16 +115,7 @@ public:
         SuspiciousStackTracesTable* stackTraceTable = m_suspiciousFingerprints.getSuspiciousStackTracesTable(fingerprint);
         if (!stackTraceTable) {
             // Unsuspicious fingerprint
-            void* memory = preferredAllocator();
-            if (!memory) {
-                return nullptr;
-            }
-            LightAllocation& alloc = m_lightAllocationsByAddress[memory];
-            alloc.fingerprint = fingerprint;
-            alloc.memory = memory;
-            alloc.requestedSize = size;
-            alloc.deadline = time(nullptr) + environment.timeForAllocationToBecomeSuspicious;
-            return memory;
+            return makeLightAllocation(preferredAllocator, fingerprint, size);
         }
 
         ++m_stats.allocationWithSuspiciousFingerprintCount;
@@ -122,7 +127,7 @@ public:
             // purpose of a LightAllocation is becoming a CloselyWatchedAllocation if unfreed, and this has already
             // happened.
             watchedStackTraceInfo.countSkippedAllocations++;
-            return preferredAllocator();
+            return makeLightAllocation(preferredAllocator, fingerprint, size);
         }
 
         // Allocation coming from a suspicious stack we should watch.
@@ -145,6 +150,7 @@ public:
         alloc.deadline = alloc.allocationTime + environment.timeForAllocationToBecomeSuspicious;
         alloc.state = CloselyWatchedAllocation::State::NotYetSuspicious;
         alloc.watchedStackTraceInfo = &watchedStackTraceInfo;
+        m_stats.liveBytes += alloc.actualSize();
         return memory;
     }
 
@@ -163,7 +169,9 @@ public:
             if (it != m_lightAllocationsByAddress.end()) {
                 // Realloc LightAllocation
                 LightAllocation& alloc = it->second;
+                m_stats.liveBytes -= alloc.requestedSize;
                 alloc.requestedSize = newRequestedSize;
+                m_stats.liveBytes += alloc.requestedSize;
                 void* newMemory = preferredReallocator();
                 if (newMemory != oldMemory) {
                     alloc.memory = newMemory;
@@ -181,6 +189,7 @@ public:
                 CloselyWatchedAllocation& alloc = it->second;
                 size_t oldActualSize = environment.roundUpToPageMultiple(alloc.requestedSize);
                 size_t newActualSize = environment.roundUpToPageMultiple(newRequestedSize);
+                m_stats.liveBytes += newActualSize - oldActualSize;
                 if (newActualSize != oldActualSize) {
                     // TODO Remove watchpoint
                     // Unfortunately, there is no function to realloc aligned memory and keep the alignment, so we have
@@ -224,6 +233,7 @@ public:
         {
             auto it = m_lightAllocationsByAddress.find(memory);
             if (it != m_lightAllocationsByAddress.end()) {
+                m_stats.liveBytes -= it->second.requestedSize;
                 m_lightAllocationsByAddress.erase(it);
                 goto freeAndReturn;
             }
@@ -233,6 +243,7 @@ public:
             auto it = m_closelyWatchedAllocationsByAddress.find(memory);
             if (it != m_closelyWatchedAllocationsByAddress.end()) {
                 CloselyWatchedAllocation& alloc = it->second;
+                m_stats.liveBytes -= alloc.actualSize();
                 alloc.watchedStackTraceInfo->countLiveCloselyWatchedAllocations--;
                 alloc.watchedStackTraceInfo->countLiveCloselyWatchedAllocationsAllTraces--;
                 // TODO Remove watchpoint
