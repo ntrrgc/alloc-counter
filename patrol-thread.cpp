@@ -48,7 +48,7 @@ static bool startsWith(const char*__restrict aString, const char *__restrict pre
 
 static int64_t getRssKB() {
     FILE* fp = fopen("/proc/self/status", "r");
-    if (fp < 0) {
+    if (!fp) {
         perror("open(/proc/self/status)");
         exit(1);
     }
