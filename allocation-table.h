@@ -10,6 +10,7 @@
 #include <malloc.h>
 #include <strings.h>
 #include <string.h>
+#include <signal.h>
 #include "callstack-fingerprint.h"
 #include "environment.h"
 #include "stack-trace.h"
@@ -87,8 +88,15 @@ public:
 
     static const uint32_t NoAlignment = 1;
 
+    void* trapNull(void* pointer) {
+        if (!pointer) {
+            raise(SIGTRAP);
+        }
+        return pointer;
+    }
+
     void* makeLightAllocation(function<void*()> preferredAllocator, CallstackFingerprint fingerprint, uint32_t requestedSize) {
-        void* memory = preferredAllocator();
+        void* memory = trapNull(preferredAllocator());
         if (!memory) {
             return nullptr;
         }
@@ -105,7 +113,7 @@ public:
      * required for closely watched allocations. */
     void* instrumentedAllocate(uint32_t size, uint32_t alignment, CallstackFingerprint fingerprint, function<void*()> preferredAllocator, ZeroFill zeroFill) {
         if (LibraryContext::inLibrary() || getWatchState() == WatchState::NotWatching)
-            return preferredAllocator();
+            return trapNull(preferredAllocator());
 
         LibraryContext ctx;
 
@@ -132,7 +140,7 @@ public:
 
         // Allocation coming from a suspicious stack we should watch.
         // memalign() will round `alignment` to the next power of two if necessary (unlikely) -- at least in glibc.
-        void* memory = memalign(std::max(alignment, environment.pageSize), environment.roundUpToPageMultiple(size));
+        void* memory = trapNull(memalign(std::max(alignment, environment.pageSize), environment.roundUpToPageMultiple(size)));
         if (!memory)
             return nullptr;
 
@@ -156,7 +164,7 @@ public:
 
     void* instrumentedReallocate(void* oldMemory, size_t newRequestedSize, function<void*()> preferredReallocator) {
         if (LibraryContext::inLibrary() || getWatchState() == WatchState::NotWatching)
-            return preferredReallocator();
+            return trapNull(preferredReallocator());
 
         LibraryContext ctx;
 
@@ -172,7 +180,7 @@ public:
                 m_stats.liveBytes -= alloc.requestedSize;
                 alloc.requestedSize = newRequestedSize;
                 m_stats.liveBytes += alloc.requestedSize;
-                void* newMemory = preferredReallocator();
+                void* newMemory = trapNull(preferredReallocator());
                 if (newMemory != oldMemory) {
                     alloc.memory = newMemory;
                     m_lightAllocationsByAddress.insert(make_pair(newMemory, alloc));
@@ -194,8 +202,8 @@ public:
                     // TODO Remove watchpoint
                     // Unfortunately, there is no function to realloc aligned memory and keep the alignment, so we have
                     // to make a new allocation and copy memory.
-                    void* newMemory = pvalloc(newRequestedSize);
-                    memcpy(newMemory, oldMemory, alloc.requestedSize);
+                    void* newMemory = trapNull(pvalloc(newRequestedSize));
+                    memcpy(newMemory, trapNull(oldMemory), alloc.requestedSize);
                     alloc.requestedSize = newRequestedSize;
                     alloc.memory = newMemory;
                     m_closelyWatchedAllocationsByAddress.insert(make_pair(newMemory, alloc));
@@ -204,7 +212,7 @@ public:
                 } else {
                     // The underlying size in pages is the same, so skip allocation.
                     alloc.requestedSize = newRequestedSize;
-                    return oldMemory;
+                    return trapNull(oldMemory);
                 }
             }
         }
