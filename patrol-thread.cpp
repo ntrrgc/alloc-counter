@@ -86,8 +86,8 @@ void PatrolThread::monitorMain() {
 
     unordered_map<StackTrace, unsigned int> stackTraceToOccurrences;
     double timeNextLeakReport = 0;
-    int64_t baseRSS = 0;
     time_t baseTime = 0;
+    bool alreadyStartedMonitoring = false;
 
     while (true) {
         sleep(5);
@@ -104,16 +104,35 @@ void PatrolThread::monitorMain() {
             progressStream << "Reallocs per second: " << stats.reallocCount / t << endl;
         }
 
-        if (stats.enabled && baseRSS == 0) {
-            baseRSS = getRssKB();
+        if (stats.enabled && !alreadyStartedMonitoring) {
+            alreadyStartedMonitoring = true;
             baseTime = time(nullptr);
-            memoryUsageStream << "#Time\tRSS\tAllocated\n";
+            memoryUsageStream
+                << "#Time\t"
+                "RSS\t"
+                "Allocated\t"
+                "Arenas size\t"
+                "Num free chunks\t"
+                "Num mmap chunks\t"
+                "mmaps size\t"
+                "Used chunks size\t"
+                "Free chunks size\t"
+                "Top chunk size\n";
         }
 
         if (stats.enabled) {
-            memoryUsageStream << time(nullptr) - baseTime << "\t"
-                << 1024 * (getRssKB() - baseRSS) << "\t"
-                << stats.liveBytes << endl;
+            struct mallinfo info = mallinfo();
+            memoryUsageStream
+                << time(nullptr) - baseTime << "\t"
+                << 1024 * getRssKB() << "\t"
+                << stats.liveBytes << "\t"
+                << info.arena << "\t"
+                << info.ordblks << "\t"
+                << info.hblks << "\t"
+                << info.hblkhd << "\t"
+                << info.uordblks << "\t"
+                << info.fordblks << "\t"
+                << info.keepcost << endl;
         }
 
         for (auto& leak : leaks) {
