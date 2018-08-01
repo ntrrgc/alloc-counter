@@ -8,11 +8,18 @@ if (ARGC < 1) {
 report = ARG1
 desired_plot = ARGC >= 2 ? ARG2 : "malloc-used"
 
-stats report using (timecolumn(1,"%s")):(column(2)) name "RSS" nooutput
-rss_trend(t) = RSS_intercept + t * RSS_slope
+# The second column here is not taken into account anywhere, we just use the `stats` command
+# to get the minimum time and number of rows (including skip_records)
+stats report using (timecolumn(1,"%s")):(column(2)) name "DUMMY_STATS" nooutput
+min_time = DUMMY_STATS_min_x
+num_lines = DUMMY_STATS_records
 
-stats report using (timecolumn(1,"%s")):(column(4) + column(7)) name "MMAP_ARENAS" nooutput
-mmap_arenas_trend(t) = MMAP_ARENAS_intercept + t * MMAP_ARENAS_slope
+# Skip the first few rows when calculating trends since they are likely outliers (application initialization)
+desired_skip_rows = 5 * 24 # 120s
+skip_records = num_lines > desired_skip_rows ? desired_skip_rows : 0
+
+stats report using (timecolumn(1,"%s")):(column(2)) every ::skip_records name "RSS" nooutput
+rss_trend(t) = RSS_intercept + t * RSS_slope
 
 set xdata time
 set format x "%H:%M"
@@ -23,10 +30,11 @@ set grid
 bind "q" 'exit gnuplot'
 bind "Close" 'exit gnuplot'
 
-shown_time(_) = timecolumn(1, "%s") - RSS_min_x
+shown_time(_) = timecolumn(1, "%s") - min_time
 
 if (desired_plot eq "rss") {
     valid_plot = 1
+    print sprintf("RSS average growth rate: %.2f MB/hour (%.2f bytes/s)", RSS_slope * 3600 / 1e6, RSS_slope)
     plot \
         report using (shown_time(1)):2 title "RSS" with lines, \
         rss_trend(x) title "RSS trend" with lines
