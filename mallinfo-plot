@@ -26,6 +26,7 @@ set format x "%H:%M"
 set format y "%.0s %cB"
 set xlabel "Time (HH:MM)"
 set ylabel "Memory usage"
+set yrange [0:]
 set grid
 bind "q" 'exit gnuplot'
 bind "Close" 'exit gnuplot'
