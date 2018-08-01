@@ -36,6 +36,13 @@ target_compile_definitions(alloc-counter PUBLIC _GNU_SOURCE)
 add_executable(alloc-counter-start
     "alloc-counter-start.cpp")
 
+add_library(mallinfo-log SHARED
+    "libmallinfo-log.cpp"
+    )
+target_compile_options(mallinfo-log PUBLIC -Wall -std=c++14)
+target_link_libraries(mallinfo-log pthread)
+target_compile_definitions(mallinfo-log PUBLIC _GNU_SOURCE)
+
 add_library(dummy-lib SHARED
     "dummy-lib.h"
     "dummy-lib.cpp"
