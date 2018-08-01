@@ -2,7 +2,7 @@
 #include "patrol-thread.h"
 #include "comm-memory.h"
 
-__attribute__((constructor)) void init(void) {
+__attribute__((constructor)) void allocCounterInit(void) {
     // Note: initRealMallocFunctions() does not need to be called here, by the time this function is called malloc
     // has already been used.
 
@@ -10,7 +10,4 @@ __attribute__((constructor)) void init(void) {
 
     initCommMemory();
     PatrolThread::spawn();
-}
-
-__attribute__((destructor))  void fini(void) {
 }

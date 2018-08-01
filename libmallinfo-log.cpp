@@ -85,6 +85,6 @@ static void mallinfoThreadMain() {
 
 static thread* mallinfoThread = nullptr;
 
-__attribute__((constructor)) void init(void) {
+__attribute__((constructor)) void mallinfoLogInit(void) {
     mallinfoThread = new thread(mallinfoThreadMain);
 }
