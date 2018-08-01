@@ -51,7 +51,7 @@ static string buildMemoryReportPath() {
 }
 
 static void mallinfoThreadMain() {
-    ofstream memoryUsageStream(buildMemoryReportPath());
+    ofstream memoryUsageStream(buildMemoryReportPath(), ofstream::trunc);
     memoryUsageStream
         << "#Time\t"
         "Total RSS\t"
