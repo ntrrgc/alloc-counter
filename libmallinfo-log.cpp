@@ -37,6 +37,7 @@ static ProcessStatus readProcessStatus() {
         sscanf(line, "RssAnon: %" PRIu64 " kB", &ret.RssAnon);
     }
     free(line);
+    fclose(fp);
 
     if (ret.RssAnon == UINT64_MAX || ret.VmRSS == UINT64_MAX)
         throw std::runtime_error("Could not parse /proc/self/status.");
