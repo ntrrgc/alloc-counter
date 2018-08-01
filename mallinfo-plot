@@ -8,7 +8,7 @@ if (ARGC < 1) {
 report = ARG1
 desired_plot = ARGC >= 2 ? ARG2 : "malloc-used"
 
-stats report using (timecolumn(1,"%s")):(column(2) - 1e8) name "RSS" nooutput
+stats report using (timecolumn(1,"%s")):(column(2)) name "RSS" nooutput
 rss_trend(t) = RSS_intercept + t * RSS_slope
 
 stats report using (timecolumn(1,"%s")):(column(4) + column(7)) name "MMAP_ARENAS" nooutput
@@ -27,7 +27,9 @@ shown_time(_) = timecolumn(1, "%s") - RSS_min_x
 
 if (desired_plot eq "rss") {
     valid_plot = 1
-    plot report using (shown_time(1)):2 title "RSS" with linespoints
+    plot \
+        report using (shown_time(1)):2 title "RSS" with lines, \
+        rss_trend(x) title "RSS trend" with lines
 }
 if (desired_plot eq "arena") {
     valid_plot = 1
