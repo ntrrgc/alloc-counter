@@ -69,6 +69,12 @@ if (desired_plot eq "anon-rss-other-than-malloc") {
     plot \
         report using (shown_time(1)):(column(3)-(column(4)+column(7))) title "Anonymous RSS minus space allocated by malloc" with lines
 }
+if (desired_plot eq "used") {
+    valid_plot = 1
+    plot \
+        report using (shown_time(1)):4 title "Size of malloc arenas" with line, \
+        report using (shown_time(1)):(column(4)-column(9)) title "Used space in malloc arenas" with line
+}
 if (desired_plot eq "free") {
     valid_plot = 1
     set y2label "Ratio of unused arena (red line only)"
