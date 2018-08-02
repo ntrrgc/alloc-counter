@@ -42,7 +42,7 @@ if (desired_plot eq "rss") {
 }
 if (desired_plot eq "arena") {
     valid_plot = 1
-    plot report using (shown_time(1)):4 title "Arenas size" with linespoints
+    plot report using (shown_time(1)):4 title "Arenas size" with line
 }
 if (desired_plot eq "malloc-used") {
     valid_plot = 1
@@ -55,14 +55,14 @@ if (desired_plot eq "malloc-used") {
 if (desired_plot eq "rss-anon-vs-all") {
     valid_plot = 1
     plot \
-        report using (shown_time(1)):3 title "RSS (anonymous)" with linespoints, \
-        report using (shown_time(1)):(column(2)-column(3)) title "RSS (anonymous + file + shared)" with linespoints
+        report using (shown_time(1)):3 title "RSS (anonymous)" with lines, \
+        report using (shown_time(1)):(column(2)-column(3)) title "RSS (anonymous + file + shared)" with lines
 }
 if (desired_plot eq "rss-anon-vs-malloc") {
     valid_plot = 1
     plot \
-        report using (shown_time(1)):3 title "RSS (anonymous)" with linespoints, \
-        report using (shown_time(1)):(column(4)+column(7)) title "malloc memory size (arenas + mmap)"
+        report using (shown_time(1)):3 title "RSS (anonymous)" with lines, \
+        report using (shown_time(1)):(column(4)+column(7)) title "malloc memory size (arenas + mmap)" with lines
 }
 if (desired_plot eq "allocations") {
     valid_plot = 1
@@ -74,8 +74,8 @@ if (desired_plot eq "allocations") {
     set yrange [0:]
     set y2range [0:]
     plot \
-        report using (shown_time(1)):3 title "# of live allocations (only in arena)" with linespoints, \
-        report using (shown_time(1)):6 title "# of live allocations (only in malloc's mmap)" with linespoints axes x1y2
+        report using (shown_time(1)):3 title "# of live allocations (only in arena)" with lines, \
+        report using (shown_time(1)):6 title "# of live allocations (only in malloc's mmap)" with lines axes x1y2
 }
 
 if (!exists("valid_plot")) {
