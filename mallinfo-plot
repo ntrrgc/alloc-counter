@@ -64,6 +64,23 @@ if (desired_plot eq "rss-anon-vs-malloc") {
         report using (shown_time(1)):3 title "RSS (anonymous)" with lines, \
         report using (shown_time(1)):(column(4)+column(7)) title "malloc memory size (arenas + mmap)" with lines
 }
+if (desired_plot eq "anon-rss-other-than-malloc") {
+    valid_plot = 1
+    plot \
+        report using (shown_time(1)):(column(3)-(column(4)+column(7))) title "Anonymous RSS minus space allocated by malloc" with lines
+}
+if (desired_plot eq "free") {
+    valid_plot = 1
+    set y2label "Ratio of unused arena (red line only)"
+    set y2range [0:]
+    set ytics nomirror
+    set y2tics nomirror
+    set format y2
+    plot \
+        report using (shown_time(1)):4 title "Size of malloc arenas" with line, \
+        report using (shown_time(1)):9 title "Free space in malloc arenas" with line, \
+        report using (shown_time(1)):(column(9)/column(4)) title "Ratio of unused arena" with line axes x1y2 linecolor "red"
+}
 if (desired_plot eq "allocations") {
     valid_plot = 1
     set ylabel "Allocations (arena)"
