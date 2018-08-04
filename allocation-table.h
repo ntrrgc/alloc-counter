@@ -17,6 +17,7 @@
 #include "allocation-stats.h"
 #include "library-context.h"
 #include "comm-memory.h"
+#include "memory-protector.h"
 using namespace std;
 
 struct Allocation {
@@ -50,6 +51,11 @@ struct CloselyWatchedAllocation : public Allocation {
     uint32_t actualSize() const {
         return environment.roundUpToPageMultiple(this->requestedSize);
     }
+
+    void onAccessDetected() {
+        this->state = State::NotYetSuspicious;
+        this->deadline = time(nullptr) + environment.closelyWatchedAllocationsRestTime;
+    }
 };
 
 class SuspiciousStackTracesTable : public unordered_map<StackTrace, WatchedStackTraceInfo> {
@@ -77,7 +83,9 @@ public:
 
 class AllocationTable {
 public:
-    AllocationTable() {}
+    AllocationTable()
+        : m_memoryProtector(&m_mutex)
+    {}
     static AllocationTable& instance() { return s_allocationTable; }
 
     enum class ZeroFill {
@@ -178,23 +186,32 @@ public:
             auto it = m_closelyWatchedAllocationsByAddress.find(oldMemory);
             if (it != m_closelyWatchedAllocationsByAddress.end()) {
                 // Realloc CloselyWatchedAllocation
-                CloselyWatchedAllocation& alloc = it->second;
-                size_t oldActualSize = environment.roundUpToPageMultiple(alloc.requestedSize);
+                CloselyWatchedAllocation& oldAlloc = it->second;
+                size_t oldActualSize = environment.roundUpToPageMultiple(oldAlloc.requestedSize);
                 size_t newActualSize = environment.roundUpToPageMultiple(newRequestedSize);
                 if (newActualSize != oldActualSize) {
-                    // TODO Remove watchpoint
                     // Unfortunately, there is no function to realloc aligned memory and keep the alignment, so we have
                     // to make a new allocation and copy memory.
+                    // We assume there are no memory access to te area since the realloc() call is made (doing so in
+                    // any application can corrupt the malloc arena), so there is no need to take the allocation mutex.
+                    m_memoryProtector.removeWatch(oldAlloc.memory);
                     void* newMemory = pvalloc(newRequestedSize);
-                    memcpy(newMemory, oldMemory, alloc.requestedSize);
-                    alloc.requestedSize = newRequestedSize;
-                    alloc.memory = newMemory;
-                    m_closelyWatchedAllocationsByAddress.insert(make_pair(newMemory, alloc));
+                    memcpy(newMemory, oldMemory, oldAlloc.requestedSize);
+                    free(oldAlloc.memory);
+
+                    CloselyWatchedAllocation& newAlloc = m_closelyWatchedAllocationsByAddress[newMemory];
+                    newAlloc.memory = newMemory;
+                    newAlloc.requestedSize = newRequestedSize;
+                    newAlloc.allocationTime = oldAlloc.allocationTime;
+                    newAlloc.state = CloselyWatchedAllocation::State::NotYetSuspicious;
+                    newAlloc.deadline = max(oldAlloc.deadline,
+                        static_cast<uint32_t>(time(nullptr) + environment.closelyWatchedAllocationsRestTime));
+                    newAlloc.watchedStackTraceInfo = oldAlloc.watchedStackTraceInfo;
                     m_closelyWatchedAllocationsByAddress.erase(it);
                     return newMemory;
                 } else {
                     // The underlying size in pages is the same, so skip allocation.
-                    alloc.requestedSize = newRequestedSize;
+                    oldAlloc.requestedSize = newRequestedSize;
                     return oldMemory;
                 }
             }
@@ -235,7 +252,7 @@ public:
                 CloselyWatchedAllocation& alloc = it->second;
                 alloc.watchedStackTraceInfo->countLiveCloselyWatchedAllocations--;
                 alloc.watchedStackTraceInfo->countLiveCloselyWatchedAllocationsAllTraces--;
-                // TODO Remove watchpoint
+                m_memoryProtector.removeWatch(alloc.memory);
                 m_closelyWatchedAllocationsByAddress.erase(it);
             }
         }
@@ -273,10 +290,13 @@ freeAndReturn:
                 case CloselyWatchedAllocation::State::NotYetSuspicious:
                     alloc.state = CloselyWatchedAllocation::State::Suspicious;
                     alloc.deadline = now + environment.closelyWatchedAllocationsAccessMaxInterval;
-                    // TODO add MemoryProtector watch
+                    m_memoryProtector.setUpSignals();
+                    m_memoryProtector.watchRange(alloc.memory, alloc.actualSize(),
+                            std::bind(&CloselyWatchedAllocation::onAccessDetected, &alloc));
                     ++it;
                     break;
                 case CloselyWatchedAllocation::State::Suspicious:
+                    m_memoryProtector.removeWatch(alloc.memory);
                     alloc.watchedStackTraceInfo->countLeakedCloselyWatchedAllocations++;
                     alloc.watchedStackTraceInfo->countLiveCloselyWatchedAllocations--;
                     alloc.watchedStackTraceInfo->countLiveCloselyWatchedAllocationsAllTraces--;
@@ -356,4 +376,5 @@ private:
     unordered_map<void*, CloselyWatchedAllocation> m_closelyWatchedAllocationsByAddress;
     SuspiciousFingerprintTable m_suspiciousFingerprints;
     AllocationStats m_stats;
+    MemoryProtector m_memoryProtector;
 };

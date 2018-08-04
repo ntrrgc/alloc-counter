@@ -25,9 +25,7 @@ struct Environment {
     /** Once a closely watched allocation enters suspicious state it has this
      * many second to receive an access and become non suspicious again.
      * Otherwise, it will be declared a leak. */
-    // TODO This iss et to 1 because the memory protector is not integrated yet, so we'd rather consider it a leak at
-    // this point rather than wait for an event that won't happen because it's not coded.
-    uint32_t closelyWatchedAllocationsAccessMaxInterval = parseEnvironIntGreaterThanZero("ALLOC_MAX_ACCESS_INTERVAL", 1);
+    uint32_t closelyWatchedAllocationsAccessMaxInterval = parseEnvironIntGreaterThanZero("ALLOC_MAX_ACCESS_INTERVAL", 120);
 
     /**
      * @brief closelyWatchedAllocationsRestTime
@@ -37,7 +35,7 @@ struct Environment {
      *
      * After this interval of time, it will be suspicious again.
      */
-    uint32_t closelyWatchedAllocationsRestTime = parseEnvironIntGreaterThanZero("ALLOC_REST_TIME", 10);
+    uint32_t closelyWatchedAllocationsRestTime = parseEnvironIntGreaterThanZero("ALLOC_REST_TIME", 120);
 
     /** Once this many closely watched allocations have expired without being
      * found to be leaks, the associated stack trace will be consider innocent

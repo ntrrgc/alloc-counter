@@ -7,6 +7,7 @@
 #include <sys/mman.h>
 #include <unistd.h>
 #include "environment.h"
+#include "library-context.h"
 using namespace std;
 
 class PointerRange {
@@ -45,25 +46,21 @@ public:
 
 class MemoryProtector {
 public:
-    static void initialize() {
-        assert(!s_instance);
-        s_instance = new MemoryProtector();
-    }
-    static MemoryProtector& instance() {
-        assert(s_instance);
-        return *s_instance;
-    }
+    MemoryProtector(mutex* mutex)
+        : m_mutex(mutex)
+    {}
 
     // Called only from patrol thread.
+    // Must be called with the lock held.
     void watchRange(void* _start, size_t size, function<void()> onAccess) {
         char* start = (char*) _start;
         assert((uintptr_t) start == ((uintptr_t) start & ~(environment.pageSize - 1))); // page aligned
-        lock_guard<mutex> lock(mutex);
         // No intersections:
         assert(!m_watchedPages.contains(start));
         assert(!m_watchedPages.contains(start + size));
         PointerRange allocationRange { start, start + size, onAccess };
         m_watchedPages.insert(allocationRange);
+        fprintf(stderr, "%p watch (%zu bytes)\n", start, size);
 
         if (0 != mprotect(start, size, PROT_NONE)) {
             perror("watchRange");
@@ -71,9 +68,11 @@ public:
         }
     }
 
-    // Called only from patrol thread.
+    // Called only from outside, when a potentially watched memory block is free'd or realloc'ed,
+    // or when the patrol thread loses hope on it and declares it a leak.
+    // Must be called with the lock held.
     void removeWatch(void* start) {
-        lock_guard<mutex> lock(mutex);
+        fprintf(stderr, "%p unwatch\n", start);
         PointerRangeList::iterator rangeIter = m_watchedPages.findContainingPointer(start);
         if (rangeIter != m_watchedPages.end()) {
             if (0 != mprotect(rangeIter->start, rangeIter->size(), PROT_READ | PROT_WRITE)) {
@@ -84,17 +83,16 @@ public:
         }
     }
 
-private:
-    static MemoryProtector* s_instance;
-    mutex m_mutex;
-    PointerRangeList m_watchedPages;
-    struct sigaction oldSigAction;
+    void setUpSignals() {
+        if (m_alreadySetUpSignals)
+            return;
 
-    MemoryProtector() {
         struct sigaction newSigAction;
         newSigAction.sa_sigaction = MemoryProtector::segfaultHandlerWrapper;
         newSigAction.sa_flags = SA_SIGINFO | SA_NODEFER;
+        s_instance = this;
 
+        // Signal masking (declaring the few signals that can interrupt our signal handler):
         // If our segfault handler has a bug, we want to catch it as usual,
         // but otherwise we want no signals to interrupt the signal handler.
         sigfillset(&newSigAction.sa_mask);
@@ -105,13 +103,20 @@ private:
         sigdelset(&newSigAction.sa_mask, SIGPIPE);
         sigdelset(&newSigAction.sa_mask, SIGSTKFLT);
 
-        if (0 != sigaction(SIGSEGV, &newSigAction, &oldSigAction)) {
+        if (0 != sigaction(SIGSEGV, &newSigAction, &m_oldSigAction)) {
             perror("MemoryUsageWatcher: could not set up signal handler");
             abort();
         }
+        m_alreadySetUpSignals = true;
     }
 
-public:
+private:
+    mutex* m_mutex = nullptr;
+    PointerRangeList m_watchedPages;
+    struct sigaction m_oldSigAction;
+    bool m_alreadySetUpSignals = false;
+    static MemoryProtector* s_instance;
+
     void segfaultHandler(void* accessedAddress) {
         static thread_local bool insideSegfaultHandler = false;
         static thread_local void* accessedAddressParentHandler = nullptr;
@@ -130,24 +135,29 @@ public:
                 //    to be the latter.
             }
             // Either way, we have to abort for real.
-            sigaction(SIGSEGV, &oldSigAction, nullptr);
+            sigaction(SIGSEGV, &m_oldSigAction, nullptr);
             raise(SIGSEGV);
         }
         insideSegfaultHandler = true;
         accessedAddressParentHandler = accessedAddress;
 
-        // TODO Check if we inside of real malloc in this thread. If that's the
+        // Check if we inside of real malloc in this thread. If that's the
         // case, abort immediately before more damage is done (e.g. by the code
         // following, which may use malloc()/free().
+        // We also need to take the library context, since there are some memory
+        // allocations later in this function and we don't want to deadlock on them.
+        LibraryContext ctx;
 
         // The watched pages table can't be read and modified at the same time.
         // Also, if two threads access the same page simultaneously, this
         // ensures that only one executes the `onAccess()` callback.
-        lock_guard<mutex> lock(mutex);
+        lock_guard<mutex> lock(*m_mutex);
+        fprintf(stderr, "%p access\n", accessedAddress);
         PointerRangeList::iterator rangeIter = m_watchedPages.findContainingPointer(accessedAddress);
         if (rangeIter != m_watchedPages.end()) {
+            fprintf(stderr, "%p unwatch because access (%zu bytes)\n", rangeIter->start, rangeIter->size());
             if (0 != mprotect(rangeIter->start, rangeIter->size(), PROT_READ | PROT_WRITE)) {
-                perror("segfaultHandler");
+                perror("segfaultHandler:mprotect");
                 abort();
             }
             rangeIter->onAccess();
@@ -166,6 +176,6 @@ public:
     }
 
     static void segfaultHandlerWrapper(int signum, siginfo_t* siginfo, void*) {
-        instance().segfaultHandler(siginfo->si_addr);
+        s_instance->segfaultHandler(siginfo->si_addr);
     }
 };

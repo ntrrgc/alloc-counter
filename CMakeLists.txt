@@ -63,5 +63,5 @@ target_compile_definitions(test-stack-traces PUBLIC _GNU_SOURCE)
 add_executable(leaking-app
     "leaking-app.cpp"
     )
-target_compile_options(leaking-app PUBLIC -Wall -std=c++14)
-target_link_libraries(leaking-app dummy-lib)
+target_compile_options(leaking-app PUBLIC -Wall -std=c++14 -fPIC)
+target_link_libraries(leaking-app dummy-lib -fPIC)
