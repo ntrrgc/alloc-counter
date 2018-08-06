@@ -103,7 +103,9 @@ private:
         sigdelset(&newSigAction.sa_mask, SIGFPE);
         sigdelset(&newSigAction.sa_mask, SIGSEGV);
         sigdelset(&newSigAction.sa_mask, SIGPIPE);
+#ifdef SIGSTKFLT
         sigdelset(&newSigAction.sa_mask, SIGSTKFLT);
+#endif
 
         if (0 != sigaction(SIGSEGV, &newSigAction, &oldSigAction)) {
             perror("MemoryUsageWatcher: could not set up signal handler");
