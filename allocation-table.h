@@ -185,7 +185,7 @@ public:
                     // TODO Remove watchpoint
                     // Unfortunately, there is no function to realloc aligned memory and keep the alignment, so we have
                     // to make a new allocation and copy memory.
-                    void* newMemory = pvalloc(newRequestedSize);
+                    void* newMemory = aligned_alloc(environment.pageSize, newActualSize);
                     memcpy(newMemory, oldMemory, alloc.requestedSize);
                     alloc.requestedSize = newRequestedSize;
                     alloc.memory = newMemory;
