@@ -20,7 +20,7 @@ static void* (*real_valloc)(size_t) = nullptr;
 static void* (*real_memalign)(size_t, size_t) = nullptr;
 static void* (*real_pvalloc)(size_t) = nullptr;
 
-#ifdef __arm__
+#if defined(__arm__) || defined(_MIPS_ARCH)
 #define STACK_REGISTER "sp"
 #else // x86_64
 #define STACK_REGISTER "rsp"
