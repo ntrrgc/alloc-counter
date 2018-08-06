@@ -5,7 +5,7 @@
 #include <cassert>
 #include "environment.h"
 
-static_assert(sizeof(void*) == sizeof(unw_word_t), "In this machine the register size and pointer size don't match.");
+static_assert(sizeof(unw_word_t) >= sizeof(void*), "unw_word_t should be able to fit a pointer");
 
 // For best performance, set this as environment variable: UNW_ARM_UNWIND_METHOD=UNW_ARM_METHOD_EXIDX
 
@@ -17,14 +17,14 @@ StackTrace::StackTrace(int numSkipCalls) noexcept {
     unw_init_local(&cursor, &context);
 
     m_hash = 0;
-    std::hash<unw_word_t> hashWord;
+    std::hash<uintptr_t> hashWord;
     while (unw_step(&cursor)) {
         unw_word_t ip;
         unw_get_reg(&cursor, UNW_REG_IP, &ip);
 
         if (numSkipCalls == 0) {
-            m_returnAddresses.push_back((void*) ip);
-            m_hash = (m_hash << 1) ^ hashWord(ip);
+            m_returnAddresses.push_back(reinterpret_cast<void*>(ip));
+            m_hash = (m_hash << 1) ^ hashWord(reinterpret_cast<uintptr_t>(ip));
         } else {
             numSkipCalls--;
         }
