@@ -6,7 +6,6 @@
 #include <sstream>
 #include <unistd.h>
 #include <malloc.h>
-extern char *program_invocation_short_name;
 using namespace std;
 
 static double getTime() {
