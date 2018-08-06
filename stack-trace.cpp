@@ -24,7 +24,7 @@ StackTrace::StackTrace(int numSkipCalls) noexcept {
 
         if (numSkipCalls == 0) {
             m_returnAddresses.push_back(reinterpret_cast<void*>(ip));
-            m_hash = (m_hash << 1) ^ hashWord(reinterpret_cast<uintptr_t>(ip));
+            m_hash = (m_hash << 1) ^ hashWord(static_cast<uintptr_t>(ip));
         } else {
             numSkipCalls--;
         }
