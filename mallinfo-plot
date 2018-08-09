@@ -52,11 +52,11 @@ if (desired_plot eq "malloc-used") {
         report using (shown_time(1)):(column(8)+column(7)) title "Used (malloc's arena + malloc's mmap)" with line
         #report using (shown_time(1)):(column(8)+column(9)) title "Used + Free" with points
 }
-if (desired_plot eq "rss-anon-vs-all") {
+if (desired_plot eq "rss-anon-vs-rest") {
     valid_plot = 1
     plot \
         report using (shown_time(1)):3 title "RSS (anonymous)" with lines, \
-        report using (shown_time(1)):(column(2)-column(3)) title "RSS (anonymous + file + shared)" with lines
+        report using (shown_time(1)):(column(2)-column(3)) title "RSS (total - anonymous)" with lines
 }
 if (desired_plot eq "rss-anon-vs-malloc") {
     valid_plot = 1
