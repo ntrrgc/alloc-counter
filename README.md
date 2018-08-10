@@ -59,7 +59,7 @@ How does it work?
 
 **Patrol thread:** The search for potential leaks and reporting is done in a separate thread spawned on startup. This *patrol thread* scans the allocation tables every 5 seconds. Reports are written in the same loop, after the allocation table mutex has been unlocked.
 
-###Callstack fingerprints
+### Callstack fingerprints
 
 Unfortunately, getting stack traces (even just return pointers) can be quite costly in calling conventions that don't use traversable frame pointers. But alloc-counter needs to be able to tell if two allocations come from the same code path in order to know how much memory is leaked by that code path.
 
@@ -71,7 +71,7 @@ The gain comes from the assumption that leaky code will leak again, with the sam
 
 Since most code does not leak and callstack fingerprints are able to differentiate at worst hundreds of allocations, much fewer unwinding operations are required, so it's no longer a problem if unwinding is a bit slow.
 
-###Kinds of allocations
+### Kinds of allocations
 
 When a memory allocation is done in alloc-counter, there are three possible levels of instrumentation it may receive:
 
@@ -85,7 +85,7 @@ After finding the callstack fingerprint to be suspicious, a stack trace is compu
 
 Since closely watched allocations are expensive there are limits to how many of them can there be in existence at the same time, both for each stack trace (`ALLOC_MAX_CLOSELY_WATCHED`) and globally (`ALLOC_GLOBAL_MAX_CLOSELY_WATCHED`). Should an allocation be made while the limit has been reached, it will not be instrumented, but it will still be counted and an extrapolation will be made in the leak report. For instance, if the stack trace limit for a given stack trace is 30 and 90 allocations of 1 MiB each are made in series, only the first 30 will be closely watched; but the report will still state that 90 MiB were allocated. Should half of the 30 closely watched be deemed leaked and the other half not leaky, 45 MiB will be reported as leaked.
 
-###The life of a closely watched allocation
+### The life of a closely watched allocation
 
 The end of a closely watched allocation is to either prove not to be leaked by being freed, or to be proven a potential leak for not being freed nor accessed in a long time.
 
