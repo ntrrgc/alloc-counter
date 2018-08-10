@@ -20,16 +20,10 @@ static void* (*real_valloc)(size_t) = nullptr;
 static void* (*real_memalign)(size_t, size_t) = nullptr;
 static void* (*real_pvalloc)(size_t) = nullptr;
 
-#if defined(__arm__) || defined(_MIPS_ARCH)
-#define STACK_REGISTER "sp"
-#else // x86_64
-#define STACK_REGISTER "rsp"
-#endif
-
 CallstackFingerprint inline __attribute__((always_inline)) makeCallstackFingerprint(uint32_t allocationSize) {
     // This function must be always_inline so that we can get the return address of malloc(), not of this function.
-    register void* stackPointer asm (STACK_REGISTER);
-    return computeCallstackFingerprint(stackPointer, __builtin_return_address(0), allocationSize);
+    int stackTop;
+    return computeCallstackFingerprint(&stackTop, __builtin_return_address(0), allocationSize);
 }
 
 void* malloc(size_t size) {
