@@ -42,7 +42,7 @@ struct Environment {
     /** Once this many closely watched allocations have expired without being
      * found to be leaks, the associated stack trace will be consider innocent
      * and no more allocations coming from it will be closely watched. */
-    uint32_t enoughSamplesToProveNoLeak = parseEnvironIntGreaterThanZero("ALLOC_NO_SAMPLES_NO_LEAK", 5);
+    uint32_t enoughSamplesToProveNoLeak = parseEnvironIntGreaterThanZero("ALLOC_ENOUGH_SAMPLES_TO_PROVE_NO_LEAK", 5);
 
     uint32_t globalMaxLiveCloselyWatchedAllocations = parseEnvironIntGreaterThanZero("ALLOC_GLOBAL_MAX_CLOSELY_WATCHED", 50000);
     uint32_t maxLiveCloselyWatchedAllocationsPerTrace = parseEnvironIntGreaterThanZero("ALLOC_MAX_CLOSELY_WATCHED", 30);
