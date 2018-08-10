@@ -10,6 +10,12 @@ static_assert(sizeof(unw_word_t) >= sizeof(void*), "unw_word_t should be able to
 // For best performance, set this as environment variable: UNW_ARM_UNWIND_METHOD=UNW_ARM_METHOD_EXIDX
 
 StackTrace::StackTrace(int numSkipCalls) noexcept {
+    static bool firstTime = true;
+    if (firstTime) {
+        firstTime = false;
+        unw_set_caching_policy(unw_local_addr_space, UNW_CACHE_GLOBAL);
+    }
+
     unw_cursor_t cursor;
     unw_context_t context;
 
@@ -17,17 +23,12 @@ StackTrace::StackTrace(int numSkipCalls) noexcept {
     unw_init_local(&cursor, &context);
 
     m_hash = 0;
-    std::hash<uintptr_t> hashWord;
     while (unw_step(&cursor)) {
         unw_word_t ip;
         unw_get_reg(&cursor, UNW_REG_IP, &ip);
 
-        if (numSkipCalls == 0) {
-            m_returnAddresses.push_back(reinterpret_cast<void*>(ip));
-            m_hash = (m_hash << 1) ^ hashWord(static_cast<uintptr_t>(ip));
-        } else {
-            numSkipCalls--;
-        }
+//            m_returnAddresses.push_back(reinterpret_cast<void*>(ip));
+        m_hash = (m_hash << 1) ^ static_cast<unsigned int>(ip);
     }
 }
 

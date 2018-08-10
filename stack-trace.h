@@ -17,7 +17,8 @@ private:
     friend struct std::hash<StackTrace>;
 
     vector<void*> m_returnAddresses; // top (recent) calls first
-    size_t m_hash;
+public:
+    unsigned int m_hash;
 };
 
 ostream& operator<<(ostream& os, const StackTrace& st);

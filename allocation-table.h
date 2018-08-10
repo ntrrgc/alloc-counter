@@ -95,57 +95,9 @@ public:
 
         LibraryContext ctx;
 
-        lock_guard<mutex> lock(m_mutex);
-        m_stats.ensureEnabled();
-        ++m_stats.allocationCount;
-        SuspiciousStackTracesTable* stackTraceTable = m_suspiciousFingerprints.getSuspiciousStackTracesTable(fingerprint);
-        if (!stackTraceTable) {
-            // Unsuspicious fingerprint
-            void* memory = preferredAllocator();
-            if (!memory) {
-                return nullptr;
-            }
-            LightAllocation& alloc = m_lightAllocationsByAddress[memory];
-            alloc.fingerprint = fingerprint;
-            alloc.memory = memory;
-            alloc.requestedSize = size;
-            alloc.deadline = time(nullptr) + environment.timeForAllocationToBecomeSuspicious;
-            return memory;
-        }
-
-        ++m_stats.allocationWithSuspiciousFingerprintCount;
         StackTrace stackTrace;
-        WatchedStackTraceInfo& watchedStackTraceInfo = stackTraceTable->getOrCreate(stackTrace);
-        if (!watchedStackTraceInfo.needsMoreCloselyWatchedAllocations()) {
-            // Suspicious stack, but we don't need to watch it (e.g. we have enough instances of that stack already).
-            // No tracking is done at all in this case (there is no use on even using a LightAllocation... as the
-            // purpose of a LightAllocation is becoming a CloselyWatchedAllocation if unfreed, and this has already
-            // happened.
-            watchedStackTraceInfo.countSkippedAllocations++;
-            return preferredAllocator();
-        }
-
-        // Allocation coming from a suspicious stack we should watch.
-        // memalign() will round `alignment` to the next power of two if necessary (unlikely) -- at least in glibc.
-        void* memory = memalign(std::max(alignment, environment.pageSize), environment.roundUpToPageMultiple(size));
-        if (!memory)
-            return nullptr;
-
-        if (zeroFill == ZeroFill::Needed)
-            bzero(memory, size);
-
-        watchedStackTraceInfo.countLiveCloselyWatchedAllocations++;
-        watchedStackTraceInfo.countLiveCloselyWatchedAllocationsAllTraces++;
-        watchedStackTraceInfo.countTotalCloselyWatchedAllocationsEverCreated++;
-
-        CloselyWatchedAllocation& alloc = m_closelyWatchedAllocationsByAddress[memory];
-        alloc.memory = memory;
-        alloc.requestedSize = size; // less or equal the size actually allocated
-        alloc.allocationTime = time(nullptr);
-        alloc.deadline = alloc.allocationTime + environment.timeForAllocationToBecomeSuspicious;
-        alloc.state = CloselyWatchedAllocation::State::NotYetSuspicious;
-        alloc.watchedStackTraceInfo = &watchedStackTraceInfo;
-        return memory;
+        volatile unsigned int hash = stackTrace.m_hash;
+        return preferredAllocator();
     }
 
     void* instrumentedReallocate(void* oldMemory, size_t newRequestedSize, function<void*()> preferredReallocator) {
