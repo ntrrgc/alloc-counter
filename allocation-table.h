@@ -18,6 +18,7 @@
 #include "library-context.h"
 #include "comm-memory.h"
 #include "memory-protector.h"
+#include "wrapper-malloc.h"
 using namespace std;
 
 struct Allocation {
@@ -135,7 +136,7 @@ public:
 
         // Allocation coming from a suspicious stack we should watch.
         // memalign() will round `alignment` to the next power of two if necessary (unlikely) -- at least in glibc.
-        void* memory = memalign(std::max(alignment, environment.pageSize), environment.roundUpToPageMultiple(size));
+        void* memory = systemMemalign(std::max(alignment, environment.pageSize), environment.roundUpToPageMultiple(size));
         if (!memory)
             return nullptr;
 
@@ -195,7 +196,7 @@ public:
                     // We assume there are no memory access to te area since the realloc() call is made (doing so in
                     // any application can corrupt the malloc arena), so there is no need to take the allocation mutex.
                     m_memoryProtector.removeWatch(oldAlloc.memory);
-                    void* newMemory = pvalloc(newRequestedSize);
+                    void* newMemory = systemMemalign(environment.pageSize, newActualSize);
                     memcpy(newMemory, oldMemory, oldAlloc.requestedSize);
                     free(oldAlloc.memory);
 

@@ -1,3 +1,4 @@
+#include "wrapper-malloc.h"
 #include "library-context.h"
 #include "comm-memory.h"
 #include "allocation-stats.h"
@@ -5,6 +6,20 @@
 #include <strings.h>
 #include <dlfcn.h>
 #include <csignal>
+
+struct EnsureNoMallocRecursion {
+    EnsureNoMallocRecursion() {
+        assert(!inMalloc);
+        inMalloc = true;
+    }
+    ~EnsureNoMallocRecursion() {
+        assert(inMalloc);
+        inMalloc = false;
+    }
+    static thread_local bool inMalloc;
+};
+
+thread_local bool EnsureNoMallocRecursion::inMalloc = false;
 
 extern "C" {
 
@@ -38,6 +53,7 @@ void* malloc(size_t size) {
     }
 
     return AllocationTable::instance().instrumentedAllocate(size, AllocationTable::NoAlignment, makeCallstackFingerprint(size), [size]() {
+        EnsureNoMallocRecursion noRecursion;
         return real_malloc(size);
     }, AllocationTable::ZeroFill::Unnecessary);
 }
@@ -56,6 +72,7 @@ void* calloc(size_t numMembers, size_t memberSize) {
 
     size_t size = numMembers * memberSize;
     return AllocationTable::instance().instrumentedAllocate(size, AllocationTable::NoAlignment, makeCallstackFingerprint(size), [numMembers, memberSize]() {
+        EnsureNoMallocRecursion noRecursion;
         return real_calloc(numMembers, memberSize);
     }, AllocationTable::ZeroFill::Needed);
 }
@@ -67,6 +84,7 @@ int posix_memalign(void **memptr, size_t alignment, size_t size) {
 
     int errorCode = 0; // Success
     void *memory = AllocationTable::instance().instrumentedAllocate(size, alignment, makeCallstackFingerprint(size), [size, alignment, &errorCode]() {
+        EnsureNoMallocRecursion noRecursion;
         void* pointerHolder = nullptr;
         errorCode = real_posix_memalign(&pointerHolder, alignment, size);
         return pointerHolder;
@@ -84,6 +102,7 @@ void *aligned_alloc(size_t alignment, size_t size) {
     }
 
     return AllocationTable::instance().instrumentedAllocate(size, alignment, makeCallstackFingerprint(size), [alignment, size]() {
+        EnsureNoMallocRecursion noRecursion;
         return real_aligned_alloc(alignment, size);
     }, AllocationTable::ZeroFill::Unnecessary);
 }
@@ -94,17 +113,14 @@ void *valloc(size_t size) {
     }
 
     return AllocationTable::instance().instrumentedAllocate(size, environment.pageSize, makeCallstackFingerprint(size), [size]() {
+        EnsureNoMallocRecursion noRecursion;
         return real_valloc(size);
     }, AllocationTable::ZeroFill::Unnecessary);
 }
 
 void *memalign(size_t alignment, size_t size) {
-    if (!real_memalign) {
-        real_memalign = (void*(*)(size_t, size_t)) dlsym(RTLD_NEXT, "memalign");
-    }
-
     return AllocationTable::instance().instrumentedAllocate(size, alignment, makeCallstackFingerprint(size), [alignment, size]() {
-        return real_memalign(alignment, size);
+        return systemMemalign(alignment, size);
     }, AllocationTable::ZeroFill::Unnecessary);
 }
 
@@ -114,6 +130,7 @@ void *pvalloc(size_t size) {
     }
 
     return AllocationTable::instance().instrumentedAllocate(size, environment.pageSize, makeCallstackFingerprint(size), [size]() {
+        EnsureNoMallocRecursion noRecursion;
         return real_pvalloc(size);
     }, AllocationTable::ZeroFill::Unnecessary);
 }
@@ -123,6 +140,7 @@ void free(void* memory) {
         real_free = (void(*)(void*)) dlsym(RTLD_NEXT, "free");
 
     AllocationTable::instance().instrumentedFree(memory, [memory]() {
+        EnsureNoMallocRecursion noRecursion;
         real_free(memory);
     });
 }
@@ -134,17 +152,20 @@ void* realloc(void* oldMemory, size_t newSize) {
     // Surprising fact: realloc() is multipurpose (see man realloc)
     if (!oldMemory) {
         return AllocationTable::instance().instrumentedAllocate(newSize, AllocationTable::NoAlignment, makeCallstackFingerprint(newSize), [newSize]() {
+            EnsureNoMallocRecursion noRecursion;
             return real_realloc(nullptr, newSize);
         }, AllocationTable::ZeroFill::Unnecessary);
     } else if (newSize == 0) {
         void* ret;
         AllocationTable::instance().instrumentedFree(oldMemory, [oldMemory, &ret]() {
+            EnsureNoMallocRecursion noRecursion;
             // man realloc: If size was equal to 0, either NULL or a pointer suitable to be passed to free() is returned.
             ret = real_realloc(oldMemory, 0);
         });
         return ret;
     } else {
         return AllocationTable::instance().instrumentedReallocate(oldMemory, newSize, [oldMemory, newSize]() {
+            EnsureNoMallocRecursion noRecursion;
             return real_realloc(oldMemory, newSize);
         });
     }
@@ -160,20 +181,32 @@ void* reallocarray(void* oldMemory, size_t newNumElements, size_t newElementSize
     if (!oldMemory) {
         return AllocationTable::instance().instrumentedAllocate(newSize, AllocationTable::NoAlignment,
                                                                 makeCallstackFingerprint(newSize), [newNumElements, newElementSize]() {
+            EnsureNoMallocRecursion noRecursion;
             return real_reallocarray(nullptr, newNumElements, newElementSize);
         }, AllocationTable::ZeroFill::Unnecessary);
     } else if (newSize == 0) {
         void* ret;
         AllocationTable::instance().instrumentedFree(oldMemory, [oldMemory, newNumElements, newElementSize, &ret]() {
             // man realloc: If size was equal to 0, either NULL or a pointer suitable to be passed to free() is returned.
+            EnsureNoMallocRecursion noRecursion;
             ret = real_reallocarray(oldMemory, newNumElements, newElementSize);
         });
         return ret;
     } else {
         return AllocationTable::instance().instrumentedReallocate(oldMemory, newSize, [oldMemory, newNumElements, newElementSize]() {
+            EnsureNoMallocRecursion noRecursion;
             return real_reallocarray(oldMemory, newNumElements, newElementSize);
         });
     }
 }
 
+}
+
+void* systemMemalign(size_t alignment, size_t size) {
+    EnsureNoMallocRecursion noRecursion;
+    if (!real_memalign) {
+        real_memalign = (void*(*)(size_t, size_t)) dlsym(RTLD_NEXT, "memalign");
+    }
+
+    return real_memalign(alignment, size);
 }

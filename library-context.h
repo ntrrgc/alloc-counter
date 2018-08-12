@@ -10,7 +10,7 @@ public:
         __inLibrary = true;
     }
     ~LibraryContext() {
-        assert(__inLibrary);
+        assert(inLibrary());
         __inLibrary = false;
     }
 

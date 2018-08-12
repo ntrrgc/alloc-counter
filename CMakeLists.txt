@@ -10,6 +10,7 @@ add_library(alloc-counter SHARED
     "library-context.h"
     "library-context.cpp"
     "wrapper-malloc.cpp"
+    "wrapper-malloc.h"
     "patrol-thread.h"
     "patrol-thread.cpp"
     "init.cpp"
