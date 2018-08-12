@@ -89,4 +89,12 @@ Since closely watched allocations are expensive there are limits to how many of 
 
 The end of a closely watched allocation is to either prove not to be leaked by being freed, or to be proven a potential leak for not being freed nor accessed in a long time.
 
-The first part is quite easy: should a `free()` occur, it's definitively not leaked. It's the second part that is tricky.
+The first part is quite easy: should a `free()` occur, it's definitively not leaked. It's the second part that is more tricky. We can't continually monitor the memory as the performance hit would be unacceptable, so instead there are two states a closely allocation can be in:
+
+* Not (yet) suspicious: The allocation is born in this state. When the deadline is hit, it becomes suspicious. The initial deadline is set to `ALLOC_TIME_SUSPICIOUS` seconds. Successive entrances in this state get `ALLOC_REST_TIME` seconds instead.
+
+* Suspicious: A suspicious allocation is watched by the memory protector. Should a read or write access occur in the memory area of the allocation during this state, the protection is cleared and the allocation becomes unsuspicious again. The deadline is set to `ALLOC_MAX_ACCESS_INTERVAL` seconds; if hit, the allocation is declared a potential leak.
+
+The memory protection consists on using `mprotect()` on the memory areas covered by the allocation. Successive accesses trigger a SIGSEGV signal that is handled by alloc-counter, who updates the allocation info, changes the protection status of the memory and allows the code to continue.
+
+**WIP Note:** Memory protection has not been completely tested in WebKit and remains [in a branch](https://github.com/ntrrgc/alloc-counter/tree/memory-protector). When working in a branch without this feature, suspicious allocations will always be declared leaks.
