@@ -57,8 +57,10 @@ ostream &operator<<(ostream &os, const StackTrace &st)
             os << " in " << info.dli_sname << "+" << offset(info.dli_saddr, returnAddress);
         }
         if (dladdrSuccess && info.dli_fname) {
-            os << " (" << info.dli_fname << ":" << environment.archName << "+0x"
+            char* objectFilePath = realpath(info.dli_fname, NULL);
+            os << " (" << objectFilePath << ":" << environment.archName << "+0x"
                << hex << offset(info.dli_fbase, returnAddress) << dec << ")";
+            free(objectFilePath);
         }
         os << endl;
         frameNumber++;
