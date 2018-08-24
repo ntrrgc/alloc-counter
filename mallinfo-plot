@@ -8,6 +8,8 @@ if (ARGC < 1) {
 report = ARG1
 desired_plot = ARGC >= 2 ? ARG2 : "malloc-used"
 
+set title report
+
 # The second column here is not taken into account anywhere, we just use the `stats` command
 # to get the minimum time and number of rows (including skip_records)
 stats report using (timecolumn(1,"%s")):(column(2)) name "DUMMY_STATS" nooutput
