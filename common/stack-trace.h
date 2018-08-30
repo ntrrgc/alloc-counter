@@ -9,6 +9,7 @@ class StackTrace {
 public:
     // Creates an stacktrace with the current stack. The topmost `numSkipCalls` are omitted (so that this
     StackTrace(int numSkipCalls = 0) noexcept;
+    size_t hash() const { return m_hash; }
 
     bool operator==(const StackTrace& other) const noexcept;
 
@@ -26,7 +27,7 @@ namespace std {
     template <>
     struct hash<StackTrace> {
         size_t operator()(const StackTrace& st) const noexcept {
-            return st.m_hash;
+            return st.hash();
         }
     };
 }
