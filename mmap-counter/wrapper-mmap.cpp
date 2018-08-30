@@ -4,9 +4,9 @@
 #include <unordered_map>
 #include <map>
 #include <memory>
-#include <cassert>
 #include <mutex>
 #include <unistd.h>
+#include <cassert>
 #include "memory-map.h"
 
 static uint32_t roundUpToPageMultiple(size_t size) {
@@ -30,7 +30,7 @@ void* mmap(void *addr, size_t len, int prot, int flags, int fd, __off_t offset) 
     if (ret != nullptr && fd == MAP_ANONYMOUS) {
         fprintf(stderr, "MAP:   %p (%zu bytes)\n", ret, len);
         intptr_t start = reinterpret_cast<intptr_t>(ret);
-        memoryMap.registerAllocation(MMapAllocation(start, roundUpToPageMultiple(len)));
+        memoryMap.registerMap(MMapAllocation(start, roundUpToPageMultiple(len)));
     }
     return ret;
 }

@@ -3,6 +3,12 @@
 #include <mutex>
 #include "interned-stack-trace.h"
 
+#ifndef MMAP_COUNTER_TESTS
+#define MMAP_COUNTER_PRIVATE private
+#else
+#define MMAP_COUNTER_PRIVATE public
+#endif
+
 struct MMapAllocation {
     explicit MMapAllocation(intptr_t originalStart, intptr_t originalSize)
         : originalStart(originalStart), originalSize(originalSize)
@@ -28,7 +34,7 @@ struct MemorySlice {
 
 class MemoryMap: public std::map<intptr_t, MemorySlice> {
 public:
-    void registerAllocation(MMapAllocation&& allocation) {
+    void registerMap(MMapAllocation&& allocation) {
         std::lock_guard<std::mutex> lock(m_mutex);
         // Initially all mmap() allocations create one MemorySlice, which may be sliced if a partial munmap() is made.
         intptr_t start = allocation.originalStart;
@@ -49,7 +55,7 @@ public:
         return eraseStart != eraseEnd;
     }
 
-private:
+MMAP_COUNTER_PRIVATE:
     void splitAt(intptr_t pointer) {
         // upper_bound() finds the first element that starts STRICTLY after pointer.
         // We are interested in the element that is immediately before that one: if it contains
@@ -61,10 +67,12 @@ private:
         if (iter == end())
             return;
 
-        MemorySlice& greatestElementThatStartsBeforePointer = std::prev(iterNext)->second;
-        assert(greatestElementThatStartsBeforePointer.start < pointer);
-        if (pointer >= greatestElementThatStartsBeforePointer.end())
+        MemorySlice& greatestElementThatStartsBeforePointer = iter->second;
+        assert(greatestElementThatStartsBeforePointer.start <= pointer);
+        if (pointer == greatestElementThatStartsBeforePointer.start
+                || pointer >= greatestElementThatStartsBeforePointer.end()) {
             return;
+        }
 
         // Let's split
         intptr_t newSliceEnd = greatestElementThatStartsBeforePointer.end();

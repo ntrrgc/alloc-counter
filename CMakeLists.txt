@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 2.8)
-
 project(alloc-counter)
+
+option(WITH_TESTS "Build tests" ON)
 
 add_library(alloc-counter SHARED
     "common/environment.h"
@@ -41,12 +42,25 @@ add_library(mmap-counter SHARED
     "mmap-counter/memory-map.h"
     "mmap-counter/memory-map.cpp"
     "mmap-counter/wrapper-mmap.cpp"
+    "mmap-counter/cpp-assert.h"
     )
 target_include_directories(mmap-counter BEFORE PRIVATE common mmap-counter)
 target_compile_options(mmap-counter PUBLIC -Wall -std=c++14)
 target_link_libraries(mmap-counter dl pthread unwind)
 target_compile_definitions(mmap-counter PUBLIC _GNU_SOURCE)
 set_target_properties(mmap-counter PROPERTIES CXX_VISIBILITY_PRESET hidden)
+
+if(WITH_TESTS)
+    add_executable(mmap-counter-tests
+        "common/stack-trace.cpp"
+        "common/environment.cpp"
+        "mmap-counter/interned-stack-trace.cpp"
+        "mmap-counter-tests/test-memory-map.cpp")
+    target_include_directories(mmap-counter-tests BEFORE PRIVATE vendor common mmap-counter)
+    target_compile_options(mmap-counter-tests PUBLIC -Wall -std=c++14)
+    target_link_libraries(mmap-counter-tests dl pthread unwind gtest)
+    target_compile_definitions(mmap-counter-tests PUBLIC _GNU_SOURCE)
+endif()
 
 add_executable(test-mmap
     "test-mmap/test-mmap.cpp")
