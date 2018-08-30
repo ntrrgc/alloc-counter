@@ -36,8 +36,11 @@ add_library(mmap-counter SHARED
     "common/stack-trace.cpp"
     "common/environment.h"
     "common/environment.cpp"
-    "mmap-counter/mmap-counter.cpp"
-    "mmap-counter/mmap-counter.h"
+    "mmap-counter/interned-stack-trace.h"
+    "mmap-counter/interned-stack-trace.cpp"
+    "mmap-counter/memory-map.h"
+    "mmap-counter/memory-map.cpp"
+    "mmap-counter/wrapper-mmap.cpp"
     )
 target_include_directories(mmap-counter BEFORE PRIVATE common mmap-counter)
 target_compile_options(mmap-counter PUBLIC -Wall -std=c++14)
