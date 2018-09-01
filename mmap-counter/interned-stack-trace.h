@@ -30,6 +30,10 @@ public:
         return *m_stackTrace;
     }
 
+    const std::shared_ptr<StackTrace> getShared() const {
+        return m_stackTrace;
+    }
+
 private:
     std::shared_ptr<StackTrace> m_stackTrace;
 

@@ -1,6 +1,5 @@
 #include <memory>
 #include <map>
-#include <mutex>
 #include "interned-stack-trace.h"
 
 #ifndef MMAP_COUNTER_TESTS
@@ -35,7 +34,6 @@ struct MemorySlice {
 class MemoryMap: public std::map<intptr_t, MemorySlice> {
 public:
     void registerMap(MMapAllocation&& allocation) {
-        std::lock_guard<std::mutex> lock(m_mutex);
         // Initially all mmap() allocations create one MemorySlice, which may be sliced if a partial munmap() is made.
         intptr_t start = allocation.originalStart;
         size_t size = allocation.originalSize;
@@ -44,7 +42,6 @@ public:
 
     bool registerUnmap(intptr_t start, size_t size) {
         // Returns true if known anonymous memory is unmapped.
-        std::lock_guard<std::mutex> lock(m_mutex);
         intptr_t end = start + size;
         splitAt(start);
         splitAt(end);
@@ -79,6 +76,4 @@ MMAP_COUNTER_PRIVATE:
         greatestElementThatStartsBeforePointer.size = pointer - greatestElementThatStartsBeforePointer.start;
         insert(std::make_pair(pointer, MemorySlice(pointer, newSliceEnd - pointer, greatestElementThatStartsBeforePointer.allocation)));
     }
-
-    std::mutex m_mutex;
 };

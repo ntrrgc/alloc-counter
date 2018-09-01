@@ -8,10 +8,10 @@ add_library(alloc-counter SHARED
     "common/environment.cpp"
     "common/stack-trace.h"
     "common/stack-trace.cpp"
+    "common/library-context.h"
+    "common/library-context.cpp"
     "alloc-counter/comm-memory.h"
     "alloc-counter/comm-memory.cpp"
-    "alloc-counter/library-context.h"
-    "alloc-counter/library-context.cpp"
     "alloc-counter/wrapper-malloc.cpp"
     "alloc-counter/patrol-thread.h"
     "alloc-counter/patrol-thread.cpp"
@@ -37,12 +37,13 @@ add_library(mmap-counter SHARED
     "common/stack-trace.cpp"
     "common/environment.h"
     "common/environment.cpp"
+    "common/library-context.h"
+    "common/library-context.cpp"
     "mmap-counter/interned-stack-trace.h"
     "mmap-counter/interned-stack-trace.cpp"
     "mmap-counter/memory-map.h"
     "mmap-counter/memory-map.cpp"
     "mmap-counter/wrapper-mmap.cpp"
-    "mmap-counter/cpp-assert.h"
     )
 target_include_directories(mmap-counter BEFORE PRIVATE common mmap-counter)
 target_compile_options(mmap-counter PUBLIC -Wall -std=c++14)
