@@ -66,6 +66,13 @@ if (desired_plot eq "rss-anon-vs-malloc") {
         report using (shown_time(1)):3 title "RSS (anonymous)" with lines, \
         report using (shown_time(1)):(column(4)+column(7)) title "malloc memory size (arenas + mmap)" with lines
 }
+if (desired_plot eq "anon-rss-several-methods") {
+    valid_plot = 1
+    plot \
+        report using (shown_time(1)):(column(3)) title "Anonymous RSS (reported from mallinfo-log)" with lines, \
+        "mmap-memory-usage.tsv" using (shown_time(1)):(column("Memory")) title "Counted by mmap-counter" with lines, \
+        "mmap-memory-usage-filtered.tsv" using (shown_time(1)):(column("Memory")+0e6) linecolor "#ff0000" title "Counted by mmap-counter (filtered)" with lines
+}
 if (desired_plot eq "anon-rss-other-than-malloc") {
     valid_plot = 1
     plot \
